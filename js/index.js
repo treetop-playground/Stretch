@@ -9,7 +9,7 @@ var TIMESTEP_SQ = TIMESTEP * TIMESTEP;
 
 let renderer, camera, scene,
     controls, mesh, stats,
-    interacting = false,
+    position, interacting = false,
     psel = undefined;
 
 const particles = [],
@@ -61,36 +61,36 @@ function init () {
     const light = new THREE.AmbientLight(0xeeffe6, 0.9);
     scene.add(light);
 
-    const spotLight = new THREE.SpotLight( 0xfd8b8b, 2.6, 4000, Math.PI/6, 0.2, 0.11 );
-    spotLight.position.set( 0.9, 0.1, -0.5 ).multiplyScalar( 400 );
+    const spotLight = new THREE.SpotLight(0xfd8b8b, 2.6, 4000, Math.PI / 6, 0.2, 0.11);
+    spotLight.position.set(0.9, 0.1, -0.5).multiplyScalar(400);
     spotLight.castShadow = true;
     spotLight.shadow.radius = 5;
-    spotLight.shadow.camera.far = 4000
+    spotLight.shadow.camera.far = 4000;
     spotLight.shadow.mapSize.height = 4096;
     spotLight.shadow.mapSize.width = 4096;
-    scene.add( spotLight );
+    scene.add(spotLight);
 
-    const spotLight2 = new THREE.SpotLight( 0x6b7af4, 2.6, 4000, Math.PI/6, 0.2, 0.11 );
-    spotLight2.position.set( -0.91, 0.1, -0.5 ).multiplyScalar( 400 );
+    const spotLight2 = new THREE.SpotLight(0x6b7af4, 2.6, 4000, Math.PI / 6, 0.2, 0.11);
+    spotLight2.position.set(-0.91, 0.1, -0.5).multiplyScalar(400);
     spotLight2.castShadow = true;
     spotLight2.shadow.radius = 5;
     spotLight2.shadow.camera.far = 4000;
     spotLight2.shadow.mapSize.height = 4096;
     spotLight2.shadow.mapSize.width = 4096;
-    scene.add( spotLight2 );
+    scene.add(spotLight2);
 
-    const directionalLight3 = new THREE.DirectionalLight( 0xffffff, 0.6 );
-    directionalLight3.position.set( 0, 1, -0.2 );
-    scene.add( directionalLight3 )
+    const directionalLight3 = new THREE.DirectionalLight(0xffffff, 0.6);
+    directionalLight3.position.set(0, 1, -0.2);
+    scene.add(directionalLight3);
 
-    const spotLight3 = new THREE.SpotLight( 0xffffff, 1.0, 4000, Math.PI/3, 1.4, 0.08 );
-    spotLight3.position.set( 0, 0, -1 ).multiplyScalar( 400 );
+    const spotLight3 = new THREE.SpotLight(0xffffff, 1.0, 4000, Math.PI / 3, 1.4, 0.08);
+    spotLight3.position.set(0, 0, -1).multiplyScalar(400);
     spotLight3.castShadow = true;
     spotLight3.shadow.radius = 5;
     spotLight3.shadow.camera.far = 4000;
     spotLight3.shadow.mapSize.height = 4096;
     spotLight3.shadow.mapSize.width = 4096;
-    scene.add( spotLight3 );
+    scene.add(spotLight3);
 
     const bgMaterial = new THREE.MeshPhysicalMaterial({
         color: 0xc9c9c9,
@@ -116,7 +116,8 @@ function init () {
         clearcoatRoughness: 0.3
     });
 
-    const geometry = new THREE.IcosahedronGeometry(100, 5);
+    const ico = new THREE.IcosahedronBufferGeometry(100, 5);
+    const geometry = THREE.BufferGeometryUtils.mergeVertices(ico, 1.5);
 
     mesh = new THREE.Mesh(geometry, material);
     mesh.castShadow = true;
@@ -131,36 +132,44 @@ function init () {
 
 function createParticles (geometry) {
 
-    for (let i = 0; i < geometry.vertices.length; i++) {
-        const t = geometry.vertices[i];
-        particles.push(new Particle(t.x, t.y, t.z, mass));
+    const index = geometry.index;
+    position = geometry.attributes.position;
+
+    for (let i = 0, len = position.count; i < len; i++) {
+        v0.fromBufferAttribute(position, i);
+        particles.push(new Particle(v0.x, v0.y, v0.z, mass));
     }
 
-    for (let i = 0; i < geometry.faces.length; i++) {
-        const face = geometry.faces[i];
+    for (let i = 0, il = index.count / 3; i < il; i++) {
 
-        if (!particles[face.b].adj.includes(face.a)) {
-            const dist = particles[face.a].original.distanceTo(particles[face.b].original);
+        const i3 = i * 3;
 
-            particles[face.a].adj.push(face.b);
-            particles[face.b].adj.push(face.a);
-            constraints.push([particles[face.a], particles[face.b], dist * dist]);
+        const a = index.getX(i3 + 0);
+        const b = index.getX(i3 + 1);
+        const c = index.getX(i3 + 2);
+
+        if (!particles[b].adj.includes(a)) {
+            const dist = particles[a].original.distanceTo(particles[b].original);
+
+            particles[a].adj.push(b);
+            particles[b].adj.push(a);
+            constraints.push([particles[a], particles[b], dist * dist]);
         }
 
-        if (!particles[face.c].adj.includes(face.a)) {
-            const dist = particles[face.a].original.distanceTo(particles[face.c].original);
+        if (!particles[c].adj.includes(a)) {
+            const dist = particles[a].original.distanceTo(particles[c].original);
 
-            particles[face.a].adj.push(face.c);
-            particles[face.c].adj.push(face.a);
-            constraints.push([particles[face.a], particles[face.c], dist * dist]);
+            particles[a].adj.push(c);
+            particles[c].adj.push(a);
+            constraints.push([particles[a], particles[c], dist * dist]);
         }
 
-        if (!particles[face.c].adj.includes(face.b)) {
-            const dist = particles[face.b].original.distanceTo(particles[face.c].original);
+        if (!particles[c].adj.includes(b)) {
+            const dist = particles[b].original.distanceTo(particles[c].original);
 
-            particles[face.b].adj.push(face.c);
-            particles[face.c].adj.push(face.b);
-            constraints.push([particles[face.b], particles[face.c], dist * dist]);
+            particles[b].adj.push(c);
+            particles[c].adj.push(b);
+            constraints.push([particles[b], particles[c], dist * dist]);
         }
     }
 }
@@ -169,7 +178,7 @@ function animate () {
 
     stats.begin();
 
-    requestAnimationFrame( animate );
+    requestAnimationFrame(animate);
 
     updateCloth();
 
@@ -184,12 +193,13 @@ function updateCloth () {
     simulate();
 
     for (var i = 0, len = particles.length; i < len; i++) {
-        mesh.geometry.vertices[i].copy(particles[i].position);
+        const p = particles[i].position;
+
+        position.setXYZ(i, p.x, p.y, p.z);
     }
 
+    position.needsUpdate = true;
     mesh.geometry.computeVertexNormals();
-
-    mesh.geometry.verticesNeedUpdate = true;
 }
 
 function updateMouse () {
@@ -232,11 +242,7 @@ function simulate () {
     let len = particles.length;
 
     for (let i = 0; i < len; i++) {
-        const particle = particles[i];
-
-        v0.copy(particle.original);
-        particle.addForce(v0.sub(particle.position).multiplyScalar(PULL));
-        particle.integrate(TIMESTEP_SQ);
+        particles[i].integrate(TIMESTEP_SQ);
     }
 
     len = constraints.length;
@@ -279,7 +285,7 @@ function satisfyConstraints (p1, p2, distSq) {
     const curDist = Math.max(distSq * cutoff, v0.lengthSq());
     const diff = distSq / (curDist + distSq) - 0.5;
 
-	v0.multiplyScalar( diff * stiffness );
+    v0.multiplyScalar(diff * stiffness);
     p1.position.sub(v0);
     p2.position.add(v0);
 }
