@@ -15,7 +15,7 @@ function init(verts, cam) {
     camera = cam;
 }
 
-function update() {
+function updating() {
 
     if (!interacting) return;
 
@@ -48,12 +48,13 @@ function update() {
 
 window.onmousemove = function(evt) {
     mouse.x = (evt.pageX / window.innerWidth) * 2 - 1;
-    mouse.y = (evt.pageT / window.innerHeight) * 2 + 1;
+    mouse.y = -(evt.pageY / window.innerHeight) * 2 + 1;
 };
 
 window.onmousedown = function(evt) {
     if (evt.button == 0) {
         interacting = true;
+`
     }
 };
 
@@ -64,5 +65,5 @@ window.onmouseup = function(evt) {
     }
 };
 
-export { init, update, mouse3d, psel };
+export { init, updating, mouse3d, psel };
 
