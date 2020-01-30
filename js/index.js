@@ -1,8 +1,10 @@
 var steps = 8;
 var stiffness = 0.76;
-var DRAG = 0.90;
-var PULL = 20.5;
-var TIMESTEP = 16 / 1000;
+var mass = 0.12;
+var cutoff = 0.76;
+var DRAG = 0.85;
+var PULL = 28.5;
+var TIMESTEP = 14 / 1000;
 var TIMESTEP_SQ = TIMESTEP * TIMESTEP;
 
 let renderer, camera, scene,
@@ -131,7 +133,7 @@ function createParticles (geometry) {
 
     for (let i = 0; i < geometry.vertices.length; i++) {
         const t = geometry.vertices[i];
-        particles.push(new Particle(t.x, t.y, t.z, 0.1));
+        particles.push(new Particle(t.x, t.y, t.z, mass));
     }
 
     for (let i = 0; i < geometry.faces.length; i++) {
@@ -187,7 +189,6 @@ function updateCloth () {
 
     mesh.geometry.computeVertexNormals();
 
-    mesh.geometry.normalsNeedUpdate = true;
     mesh.geometry.verticesNeedUpdate = true;
 }
 
@@ -275,9 +276,10 @@ function satisfyConstraints (p1, p2, distSq) {
 
     v0.subVectors(p2.position, p1.position);
 
-    const diff = distSq / (v0.lengthSq() + distSq) - 0.5;
-    v0.multiplyScalar(diff * stiffness);
+    const curDist = Math.max(distSq * cutoff, v0.lengthSq());
+    const diff = distSq / (curDist + distSq) - 0.5;
 
+	v0.multiplyScalar( diff * stiffness );
     p1.position.sub(v0);
     p2.position.add(v0);
 }
