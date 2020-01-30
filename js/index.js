@@ -1,6 +1,6 @@
-var steps = 10;
+var steps = 8;
 var stiffness = 0.76;
-var DRAG = 0.88;
+var DRAG = 0.90;
 var PULL = 20.5;
 var TIMESTEP = 16 / 1000;
 var TIMESTEP_SQ = TIMESTEP * TIMESTEP;
@@ -165,13 +165,11 @@ function createParticles (geometry) {
 
 function animate () {
 
-    requestAnimationFrame(animate);
-
     stats.begin();
 
-    updateCloth();
+    requestAnimationFrame( animate );
 
-    controls.update();
+    updateCloth();
 
     renderer.render(scene, camera);
 
@@ -242,7 +240,7 @@ function simulate () {
 
     len = constraints.length;
 
-    for (j = 0; j < steps; j++) {
+    for (let j = 0; j < steps; j++) {
 
         // mouse intersect
 
