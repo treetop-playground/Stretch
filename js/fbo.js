@@ -215,9 +215,9 @@ function integrate () {
     targetRT = tmp;
 }
 
-function constrain( offset ) {
+function solveConstraint (offset) {
 
-    const tID = ( offset < 4 ) ? 0 : 1;
+    const tID = (offset < 4) ? 0 : 1;
     const cID = offset % 4;
 
     mesh.material = constraintShader;
@@ -226,8 +226,8 @@ function constrain( offset ) {
     constraintShader.uniforms.tPosition.value = positionRT.texture;
     constraintShader.uniforms.tConstraints.value = constraintRTs[tID].texture;
 
-    renderer.setRenderTarget( targetRT );
-    renderer.render( scene, camera );
+    renderer.setRenderTarget(targetRT);
+    renderer.render(scene, camera);
 
     const tmp = positionRT;
     positionRT = targetRT;
@@ -238,9 +238,9 @@ function update () {
 
     integrate();
 
-    for ( let i = 0; i < 80; i++ ) {
-        for ( let j = 0; j < 8; j++ ) {
-            constrain( j );
+    for (let i = 0; i < 80; i++) {
+        for (let j = 0; j < 8; j++) {
+            solveConstraint(j);
         }
     }
 }
