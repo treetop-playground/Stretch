@@ -1,0 +1,7 @@
+{
+  "name": "Squish",
+  "version": "1.0.0",
+  "devDependencies": {
+    "three": "^0.109.0"
+  }
+}
