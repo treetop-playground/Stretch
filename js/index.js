@@ -1,4 +1,5 @@
 import * as FBO from './fbo.js';
+import * as CLOTH from './cloth.js';
 
 var steps = 12;
 var stiffness = 0.76;
@@ -108,29 +109,14 @@ function init () {
     bg.rotation.x += Math.PI * 0.9;
     bg.position.set(0, -100, 2000);
 
-    // mesh
-
-    const material = new THREE.MeshPhysicalMaterial({
-        color: 0xffda20,
-        metalness: 0.1,
-        roughness: 0.5,
-        clearcoat: 0.8,
-        clearcoatRoughness: 0.3
-    });
-
     const ico = new THREE.IcosahedronBufferGeometry(100, 5);
     const geometry = THREE.BufferGeometryUtils.mergeVertices(ico, 1.5);
-
-    mesh = new THREE.Mesh(geometry, material);
-    mesh.castShadow = true;
-    scene.add(mesh);
-
-    // particles
-
     position = geometry.attributes.position;
-    createParticles(geometry);
 
     FBO.init(renderer, position);
+
+    CLOTH.init(geometry);
+    scene.add(CLOTH.mesh);
 
     animate();
 }
@@ -200,15 +186,18 @@ function createParticles (geometry) {
 
 function animate () {
 
-    stats.begin();
-
-    requestAnimationFrame(animate);
+    const t = requestAnimationFrame(animate);
 
     // updateCloth();
 
+    stats.begin();
+
+    if (t > 100) FBO.update();
+
+    renderer.setRenderTarget(null);
     renderer.render(scene, camera);
 
-    stats.end();
+    stats.update();
 }
 
 function updateCloth () {
