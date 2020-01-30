@@ -186,8 +186,6 @@ function animate () {
 
     const t = requestAnimationFrame(animate);
 
-    // updateCloth();
-
     stats.begin();
 
     FBO.update();
@@ -197,42 +195,6 @@ function animate () {
 
     stats.update();
 }
-
-function updateCloth () {
-
-    updateMouse();
-    simulate();
-
-    for (var i = 0, len = particles.length; i < len; i++) {
-        const p = particles[i].position;
-
-        position.setXYZ(i, p.x, p.y, p.z);
-    }
-
-    position.needsUpdate = true;
-    mesh.geometry.computeVertexNormals();
-}
-
-function simulate () {
-
-    for (let j = 0; j < steps; j++) {
-
-        // mouse intersect
-
-        if (interacting && psel) {
-            v0.copy(mouse3d).sub(particles[psel].position); // offset
-
-            for (let i = 0; i < particles.length; i++) {
-
-                const distance = particles[psel].original.distanceTo(particles[i].original);
-
-                if (particles[i].distance < 15) {
-                    particles[i].position.add(v0);
-                }
-            }
-        }
-    }
-};
 
 window.onresize = function () {
     const w = window.innerWidth;
