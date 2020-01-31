@@ -1,7 +1,21 @@
 {
   "name": "Squish",
-  "version": "1.0.0",
+  "version": "0.97.0",
+  "description": "WebGL Cloth Simulation",
+  "main": "src/main.js",
+  "scripts": {
+    "build": "rollup -c",
+    "build-closure": "rollup -c && google-closure-compiler --warning_level=VERBOSE --jscomp_off=globalThis --jscomp_off=checkTypes --externs utils/externs.js --js build/app.js --js_output_file build/app.min.js",
+    "dev": "concurrently --names \"ROLLUP,HTTP\" -c \"bgBlue.bold,bgGreen.bold\" \"rollup -c -w\" \"http-server\""
+  },
+  "author": "Warren Galyen",
+  "license": "MIT",
+  "homepage": "https://www.mechnaikdesign.com",
   "devDependencies": {
-    "three": "^0.109.0"
+    "concurrently": "^4.1.1",
+    "google-closure-compiler": "20190415.0.0",
+    "http-server": "^0.11.1",
+    "rollup": "^1.17.0",
+    "three": "^0.105.2"
   }
 }
