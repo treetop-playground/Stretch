@@ -46,7 +46,7 @@ void main() {
 	b = texture2D( tPosition, uvB ).xyz;
 	c = texture2D( tPosition, uvC ).xyz;
 	fNormal = cross( ( c - b ), ( a - b ) );
-	if ( idB != - 1.0 ) normals += fNormal;
+    if ( idB != -1.0 ) normals += fNormal;
 	// face3
 	idB = texture2D( tFace2, uv ).z;
 	idC = texture2D( tFace2, uv ).w;
