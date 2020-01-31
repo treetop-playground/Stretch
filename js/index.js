@@ -28,8 +28,6 @@ function init () {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
 
-    renderer.debug.checkShaderErrors = true;
-
     document.body.appendChild(renderer.domElement);
 
     scene = new THREE.Scene();
