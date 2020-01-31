@@ -1,10 +1,7 @@
 export default /* glsl */`
 precision highp float;
-
 uniform int cID;
-
-uniform vec2 tSize; 
-
+uniform vec2 tSize;
 uniform sampler2D tPosition;
 uniform sampler2D tOriginal;
 uniform sampler2D tConstraints;
@@ -37,8 +34,9 @@ void main() {
 	float restDist = dot( offOrg, offOrg );
 	float curDist = dot( offCur, offCur );
 	float diff = restDist / ( curDist + restDist ) - 0.5;
+	if ( diff > 0.0 ) diff *= 0.2;
 	if ( id == -1.0 ) diff = 0.0;
-	posA -= offCur * diff * 0.76;
+	posA -= offCur * diff * 0.52;
 	gl_FragColor = vec4( posA, 1.0 );
 }
 `;

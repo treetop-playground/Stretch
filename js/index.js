@@ -2,15 +2,6 @@ import * as FBO from './fbo.js';
 import * as CLOTH from './cloth.js';
 import * as MOUSE from './mouse.js';
 
-var steps = 12;
-var stiffness = 0.76;
-var mass = 0.12;
-var cutoff = 0.76;
-var DRAG = 0.85;
-var PULL = 28.5;
-var TIMESTEP = 14 / 1000;
-var TIMESTEP_SQ = TIMESTEP * TIMESTEP;
-
 let renderer, camera, scene,
     controls, mesh, stats,
     position, interacting = false,
@@ -35,7 +26,9 @@ function init () {
     renderer.physicallyCorrectLights = true;
 
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+
+    renderer.debug.checkShaderErrors = true;
 
     document.body.appendChild(renderer.domElement);
 
@@ -125,7 +118,7 @@ function createParticles (geometry) {
 
     for (let i = 0, len = position.count; i < len; i++) {
         v0.fromBufferAttribute(position, i);
-        particles.push(new Particle(v0.x, v0.y, v0.z, mass));
+        particles.push(new Particle(v0.x, v0.y, v0.z));
     }
 
     for (let i = 0, il = index.count / 3; i < il; i++) {
