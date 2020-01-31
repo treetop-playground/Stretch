@@ -12,7 +12,8 @@ function init (geo) {
         metalness: 0.1,
         roughness: 0.5,
         clearcoat: 0.8,
-        clearcoatRoughness: 0.3
+        clearcoatRoughness: 0.3,
+        dithering: true
     });
 
     material.onBeforeCompile = function (shader) {

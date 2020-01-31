@@ -173,7 +173,7 @@ function copyTexture (input, output) {
 
 function createPositionTexture (vertices, expand) {
 
-    const data = new Float32Array(RESOLUTION * RESOLUTION * 3);
+    const data = new Float32Array(RESOLUTION * RESOLUTION * 4);
     const length = vertices.array.length;
 
     for (let i = 0; i < RESOLUTION; i++) {
