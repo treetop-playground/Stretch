@@ -1,99 +1,23 @@
-// shader-import-block
-import through_vert from '../glsl/through.vert.js';
+import {
+    constraintsShader,
+    copyShader,
+    integrateShader,
+    mouseShader,
+    normalsShader
+} from './materials.js';
 
-import constraints_frag from '../glsl/constraints.frag.js';
-import integrate_frag from '../glsl/integrate.frag.js';
-import mouse_frag from '../glsl/mouse.frag.js';
-import normals_frag from '../glsl/normals.frag.js';
-import through_frag from '../glsl/through.frag.js';
-
-let RESOLUTION, MOUSE,
-    renderer, mesh, steps = 60,
+let
+    RESOLUTION, MOUSE,
+    renderer, mesh, targetRT, normalsRT,
     originalRT, previousRT, positionRT,
-    targetRT, normalsRT,
-    constraintsRT, facesRT;
+    constraintsRT, facesRT,
+    steps = 60;
 
 // setup
-const tSize = new THREE.Vector2(),
+const
+    tSize = new THREE.Vector2(),
     scene = new THREE.Scene(),
-    camera = new THREE.Camera(),
-
-    // materials
-    copyShader = new THREE.RawShaderMaterial({
-        uniforms: {
-            tSize: { type: 'v2', value: tSize },
-            texture: { type: 't' }
-        },
-        vertexShader: through_vert,
-        fragmentShader: through_frag,
-        fog: false,
-        lights: false,
-        depthWrite: false,
-        depthTest: false
-    }),
-
-    integrateShader = new THREE.RawShaderMaterial({
-        uniforms: {
-            tSize: { type: 'v2', value: tSize },
-            tOriginal: { type: 't' },
-            tPrevious: { type: 't' },
-            tPosition: { type: 't' }
-        },
-        vertexShader: through_vert,
-        fragmentShader: integrate_frag,
-        fog: false,
-        lights: false,
-        depthWrite: false,
-        depthTest: false
-    }),
-
-    mouseShader = new THREE.RawShaderMaterial({
-        uniforms: {
-            psel: { value: null },
-            mouse: { type: 'v3' },
-            tSize: { type: 'v2', value: tSize },
-            tOriginal: { type: 't' },
-            tPosition: { type: 't' },
-        },
-        vertexShader: through_vert,
-        fragmentShader: mouse_frag,
-        fog: false,
-        lights: false,
-        depthWrite: false,
-        depthTest: false
-    }),
-
-    constraintsShader = new THREE.RawShaderMaterial({
-        uniforms: {
-            cID: { value: null },
-            tSize: { type: 'v2', value: tSize },
-            tOriginal: { type: 't' },
-            tPosition: { type: 't' },
-            tConstraints: { type: 't' }
-        },
-        vertexShader: through_vert,
-        fragmentShader: constraints_frag,
-        fog: false,
-        lights: false,
-        depthWrite: false,
-        depthTest: false
-    }),
-
-    normalsShader = new THREE.RawShaderMaterial({
-        uniforms: {
-            tSize: { type: 'v2', value: tSize },
-            tPosition: { type: 't' },
-            tFace1: { type: 't' },
-            tFace2: { type: 't' },
-            tFace3: { type: 't' },
-        },
-        vertexShader: through_vert,
-        fragmentShader: normals_frag,
-        fog: false,
-        lights: false,
-        depthWrite: false,
-        depthTest: false
-    });
+    camera = new THREE.Camera();
 
 function init (WebGLRenderer, vertices, particles, mouse) {
 
@@ -120,35 +44,16 @@ function init (WebGLRenderer, vertices, particles, mouse) {
     scene.add(mesh);
 
     // render targets
-    originalRT = new THREE.WebGLRenderTarget(RESOLUTION, RESOLUTION, {
-        wrapS: THREE.ClampToEdgeWrapping,
-        wrapT: THREE.ClampToEdgeWrapping,
-        minFilter: THREE.NearestFilter,
-        magFilter: THREE.NearestFilter,
-        format: THREE.RGBAFormat,
-        type: THREE.FloatType,
-        depthTest: false,
-        depthWrite: false,
-        depthBuffer: false,
-        stencilBuffer: false
-    }),
+    originalRT = createRenderTarget();
+    targetRT = createRenderTarget();
+    previousRT = createRenderTarget();
+    positionRT = createRenderTarget();
+    normalsRT = createRenderTarget();
 
-        targetRT = originalRT.clone();
-    previousRT = originalRT.clone();
-    positionRT = originalRT.clone();
-    normalsRT = originalRT.clone();
-
-    constraintsRT = new Array(2);
-    constraintsRT[0] = originalRT.clone();
-    constraintsRT[1] = originalRT.clone();
-
-    facesRT = new Array(2);
-    facesRT[0] = originalRT.clone();
-    facesRT[1] = originalRT.clone();
-    facesRT[2] = originalRT.clone();
+    constraintsRT = Array.from({ length: 2 }, createRenderTarget);
+    facesRT = Array.from({ length: 3 }, createRenderTarget);
 
     // prepare
-
     copyTexture(createPositionTexture(vertices), originalRT);
     copyTexture(originalRT, previousRT);
     copyTexture(originalRT, positionRT);
@@ -159,15 +64,34 @@ function init (WebGLRenderer, vertices, particles, mouse) {
     copyTexture(createFacesTexture(particles, 0), facesRT[0]);
     copyTexture(createFacesTexture(particles, 2), facesRT[1]);
     copyTexture(createFacesTexture(particles, 4), facesRT[2]);
+
 }
 
 function copyTexture (input, output) {
 
     mesh.material = copyShader;
+    copyShader.uniforms.tSize.value = tSize;
     copyShader.uniforms.texture.value = input.texture;
 
     renderer.setRenderTarget(output);
     renderer.render(scene, camera);
+
+}
+
+function createRenderTarget () {
+
+    return new THREE.WebGLRenderTarget(RESOLUTION, RESOLUTION, {
+        wrapS: THREE.ClampToEdgeWrapping,
+        wrapT: THREE.ClampToEdgeWrapping,
+        minFilter: THREE.NearestFilter,
+        magFilter: THREE.NearestFilter,
+        format: THREE.RGBAFormat,
+        type: THREE.FloatType,
+        depthTest: false,
+        depthWrite: false,
+        depthBuffer: false,
+        stencilBuffer: false
+    });
 
 }
 
@@ -188,7 +112,9 @@ function createPositionTexture (vertices, expand) {
             data[i4 + 0] = vertices.array[i3 + 0];
             data[i4 + 1] = vertices.array[i3 + 1];
             data[i4 + 2] = vertices.array[i3 + 2];
+
         }
+
     }
 
     const tmp = {};
@@ -262,6 +188,7 @@ function createFacesTexture (particles, k) {
 function integrate () {
 
     mesh.material = integrateShader;
+    integrateShader.uniforms.tSize.value = tSize;
     integrateShader.uniforms.tOriginal.value = originalRT.texture;
     integrateShader.uniforms.tPrevious.value = previousRT.texture;
     integrateShader.uniforms.tPosition.value = positionRT.texture;
@@ -282,6 +209,7 @@ function solveConstraints (offset) {
     const cID = offset % 4;
 
     mesh.material = constraintsShader;
+    constraintsShader.uniforms.tSize.value = tSize;
     constraintsShader.uniforms.cID.value = cID;
     constraintsShader.uniforms.tOriginal.value = originalRT.texture;
     constraintsShader.uniforms.tPosition.value = positionRT.texture;
@@ -293,11 +221,13 @@ function solveConstraints (offset) {
     const tmp = positionRT;
     positionRT = targetRT;
     targetRT = tmp;
+
 }
 
 function mouseOffset () {
 
     mesh.material = mouseShader;
+    mouseShader.uniforms.tSize.value = tSize;
     mouseShader.uniforms.psel.value = MOUSE.psel;
     mouseShader.uniforms.mouse.value = MOUSE.mouse3d;
     mouseShader.uniforms.tOriginal.value = originalRT.texture;
@@ -309,11 +239,13 @@ function mouseOffset () {
     const tmp = positionRT;
     positionRT = targetRT;
     targetRT = tmp;
+
 }
 
 function computeVertexNormals () {
 
     mesh.material = normalsShader;
+    normalsShader.uniforms.tSize.value = tSize;
     normalsShader.uniforms.tPosition.value = positionRT.texture;
     normalsShader.uniforms.tFace1.value = facesRT[0].texture;
     normalsShader.uniforms.tFace2.value = facesRT[1].texture;
@@ -321,6 +253,7 @@ function computeVertexNormals () {
 
     renderer.setRenderTarget(normalsRT);
     renderer.render(scene, camera);
+
 }
 
 function update () {
@@ -332,12 +265,17 @@ function update () {
         if (MOUSE.updating()) mouseOffset();
 
         for (let j = 0; j < 8; j++) {
+
             solveConstraints(j);
+
         }
 
         for (let j = 7; j >= 0; j--) {
+
             solveConstraints(j);
+
         }
+
     }
 
     computeVertexNormals();
