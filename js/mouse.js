@@ -54,7 +54,6 @@ window.onmousemove = function(evt) {
 window.onmousedown = function(evt) {
     if (evt.button == 0) {
         interacting = true;
-`
     }
 };
 
@@ -66,4 +65,3 @@ window.onmouseup = function(evt) {
 };
 
 export { init, updating, mouse3d, psel };
-
