@@ -15,7 +15,7 @@ function init( scene ) {
     const material = new THREE.MeshPhysicalMaterial({
         color: 0xffda20,
         bumpMap: bmp,
-        bumpScale: 0.35,
+        bumpScale: 0.25,
         metalness: 0.1,
         roughness: 0.6,
         clearcoat: 0.8,
