@@ -14,7 +14,7 @@ let
     renderer, mesh, targetRT, normalsRT,
     originalRT, previousRT, positionRT,
     constraintsRT, facesRT,
-    steps = 40;
+    steps = 60;
 
 // setup
 const
@@ -263,13 +263,6 @@ function update () {
             solveConstraints(j);
 
         }
-
-        for (let j = 7; j >= 0; j--) {
-
-            solveConstraints(j);
-
-        }
-
     }
 
     computeVertexNormals();

@@ -437,7 +437,7 @@ let
     renderer, mesh, targetRT, normalsRT,
     originalRT, previousRT, positionRT,
     constraintsRT, facesRT,
-    steps = 40;
+    steps = 60;
 
 // setup
 const
@@ -686,13 +686,6 @@ function update () {
             solveConstraints(j);
 
         }
-
-        for (let j = 7; j >= 0; j--) {
-
-            solveConstraints(j);
-
-        }
-
     }
 
     computeVertexNormals();
@@ -705,12 +698,14 @@ function init$3( scene ) {
 
     RESOLUTION$1 = Math.ceil( Math.sqrt( vertices.length ) );
 
+    const texture = new THREE.TextureLoader().load( 'https://threejs.org/examples/textures/UV_Grid_Sm.jpg');
+
     const material = new THREE.MeshPhysicalMaterial({
         color: 0xffda20,
         metalness: 0.1,
-        roughness: 0.5,
+        roughness: 0.6,
         clearcoat: 0.8,
-        clearcoatRoughness: 0.3,
+        clearcoatRoughness: 0.35,
         dithering: true
     });
 
@@ -727,6 +722,10 @@ function init$3( scene ) {
         shader.vertexShader = shader.vertexShader.replace(
             '#include <begin_vertex>',
             ''
+        );
+        shader.fragmentShader = shader.fragmentShader.replace(
+            '#include <lights_physical_pars_fragment>',
+            physical_frag
         );
     };
 
@@ -752,6 +751,7 @@ function init$3( scene ) {
     const geometry$1 = new THREE.BufferGeometry();
     geometry$1.setIndex( geometry.index );
     geometry$1.addAttribute('position', new THREE.BufferAttribute(position, 3));
+    geometry$1.addAttribute('uv', geometry.attributes.uv);
 
     mesh$1 = new THREE.Mesh(geometry$1, material);
     mesh$1.customDepthMaterial = depthMaterial;
@@ -769,19 +769,20 @@ const
 function init$4 (scene) {
 
     // lights
-    const ambientLight = new THREE.AmbientLight(0xeeffe6, 0);
-    ambientLight.baseIntensity = 0.9;
+    const ambientLight = new THREE.AmbientLight( 0xffffff, 0 );
+    ambientLight.baseIntensity = 1.0;
 
     const spotLight = new THREE.SpotLight(0xfd8b8b, 0, 4000, Math.PI / 6, 0.2, 0.11);
+    spotLight.baseIntensity = 3.6;
     spotLight.position.set(0.9, 0.1, -0.5).multiplyScalar(400);
-    spotLight.baseIntensity = 2.6;
     spotLight.castShadow = true;
     spotLight.shadow.radius = 20;
     spotLight.shadow.camera.far = 4000;
     spotLight.shadow.mapSize.height = 4096;
     spotLight.shadow.mapSize.width = 4096;
 
-    const spotLight2 = new THREE.SpotLight(0x6b7af4, 0, 4000, Math.PI / 6, 0.2, 0.11);
+    const spotLight2 = new THREE.SpotLight(0x4a7fe8, 0, 4000, Math.PI / 6, 0.2, 0.11);
+    spotLight2.baseIntensity = 2.6;
     spotLight2.position.set(-0.91, 0.1, -0.5).multiplyScalar(400);
     spotLight2.baseIntensity = 2.6;
     spotLight2.castShadow = true;
@@ -791,7 +792,7 @@ function init$4 (scene) {
     spotLight2.shadow.mapSize.width = 4096;
 
     const spotLight3 = new THREE.SpotLight(0xffffff, 0, 4000, Math.PI / 5.5, 1.4, 0.08);
-    spotLight3.baseIntensity = 1.0;
+    spotLight3.baseIntensity = 1.8;
     spotLight3.position.set(0, 0, -1).multiplyScalar(400);
     spotLight3.castShadow = true;
     spotLight3.shadow.radius = 5;
@@ -800,11 +801,14 @@ function init$4 (scene) {
     spotLight3.shadow.mapSize.width = 4096;
 
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0);
-    directionalLight.baseIntensity = 0.6;
-    directionalLight.position.set(0, 1, -0.2);
+    directionalLight.baseIntensity = 0.3;
+    directionalLight.position.set( 0, 1, +0.5 );
+    const directionalLight2 = new THREE.DirectionalLight( 0xffffff, 0 );
+    directionalLight2.baseIntensity = 1.3;
+    directionalLight2.position.set( 0, 1, -0.4 );
 
-    scene.add(ambientLight, spotLight, spotLight2, spotLight3, directionalLight);
-    objects = [ambientLight, spotLight, spotLight2, spotLight3, directionalLight];
+    scene.add( ambientLight, spotLight, spotLight2, spotLight3, directionalLight, directionalLight2 );
+    objects = [ ambientLight, spotLight, spotLight2, spotLight3, directionalLight, directionalLight2 ];
 
 }
 
@@ -872,12 +876,13 @@ function init$5 () {
     // release mem for GC
     dispose();
 
+    // start program
     animate();
 }
 
 function animate () {
 
-    const t = requestAnimationFrame(animate);
+    requestAnimationFrame(animate);
 
     update$1();
     update();

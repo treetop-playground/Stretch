@@ -48,12 +48,13 @@ function init () {
     // release mem for GC
     PRE.dispose();
 
+    // start program
     animate();
 }
 
 function animate () {
 
-    const t = requestAnimationFrame(animate);
+    requestAnimationFrame(animate);
 
     LIGHTS.update();
     FBO.update();
