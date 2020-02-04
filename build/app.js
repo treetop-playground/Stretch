@@ -700,7 +700,7 @@ function init$3( scene ) {
 
     const tl = new THREE.TextureLoader();
 
-    const bmp = tl.load( '../../assets/Leather_007_DISP.PNG');
+    const bmp = tl.load( '../../assets/bmpMap.png');
 
     const material = new THREE.MeshPhysicalMaterial({
         color: 0xffda20,
