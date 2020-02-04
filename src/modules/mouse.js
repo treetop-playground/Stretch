@@ -1,5 +1,7 @@
+import * as PRE from './pre.js';
+
 let
-    camera, object, particles,
+    camera, object,
     interacting = false,
     psel = undefined;
 
@@ -8,16 +10,19 @@ const
     tmpmouse = new THREE.Vector3(),
     mouse3d = new THREE.Vector3(),
     raycaster = new THREE.Raycaster(),
-    plane = new THREE.Plane( undefined, -180 ),
-    sphere = new THREE.Sphere( undefined, 100 );
+    plane = new THREE.Plane(undefined, -180),
+    sphere = new THREE.Sphere(undefined, 100);
 
-function init(verts, cam) {
+function init (PerspectiveCamera) {
 
-    particles = verts;
-    camera = cam;
+    camera = PerspectiveCamera;
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseup', onMouseUp);
 }
 
-function updating() {
+function updating () {
 
     if (!interacting) return;
 
@@ -28,8 +33,8 @@ function updating() {
 
         if (psel == undefined) {
             let dist = Infinity;
-            for (let i = 0; i < particles.length; i++) {
-                const tmp = mouse3d.distanceTo(particles[i].original);
+            for (let i = 0; i < PRE.vertices.length; i++) {
+                const tmp = mouse3d.distanceTo(PRE.vertices[i]);
 
                 if (tmp < dist) {
                     dist = tmp;
@@ -45,21 +50,21 @@ function updating() {
         mouse3d.copy(tmpmouse);
     }
 
-    return (interacting && psel) ? true: false;
+    return (interacting && psel) ? true : false;
 }
 
-window.onmousemove = function(evt) {
+function onMouseMove (evt) {
     mouse.x = (evt.pageX / window.innerWidth) * 2 - 1;
     mouse.y = -(evt.pageY / window.innerHeight) * 2 + 1;
 };
 
-window.onmousedown = function(evt) {
+function onMouseDown (evt) {
     if (evt.button == 0) {
         interacting = true;
     }
 };
 
-window.onmouseup = function(evt) {
+function onMouseUp (evt) {
     if (evt.button == 0) {
         interacting = false;
         psel = undefined;

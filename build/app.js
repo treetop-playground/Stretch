@@ -1,28 +1,196 @@
-(function () {
-	'use strict';
+function init (scene) {
 
-	function init (scene) {
+    const material = new THREE.MeshPhysicalMaterial({
 
-	    const material = new THREE.MeshPhysicalMaterial({
+        color: 0x393939,
+        metalness: 0.9,
+        roughness: 0.4,
+        dithering: true
 
-	        color: 0x393939,
-	        metalness: 0.9,
-	        roughness: 0.4,
-	        dithering: true
+    });
 
-	    });
+    const geometry = new THREE.PlaneBufferGeometry(16000, 16000);
 
-	    const geometry = new THREE.PlaneBufferGeometry(16000, 16000);
+    const object = new THREE.Mesh(geometry, material);
+    object.receiveShadow = true;
+    object.rotation.x += Math.PI * 0.9;
+    object.position.set(0, -100, 2000);
 
-	    const object = new THREE.Mesh(geometry, material);
-	    object.receiveShadow = true;
-	    object.rotation.x += Math.PI * 0.9;
-	    object.position.set(0, -100, 2000);
+    scene.add(object);
+}
 
-	    scene.add(object);
-	}
+let
+    geometry,
+    faces, colors,
+    vertices = new Array(),
+    constraints = new Array();
 
-	var through_vert = /* glsl */`
+function calculate () {
+
+    const tmp = new THREE.IcosahedronBufferGeometry(100, 5);
+    geometry = THREE.BufferGeometryUtils.mergeVertices(tmp, 1.5);
+
+    populateVertices();
+
+    faces = Array.from({ length: vertices.length }, () => new Array());
+    colors = Array.from({ length: vertices.length }, () => new Array(8).fill());
+
+    populateConstraints();
+
+    populateColors();
+}
+
+function populateVertices () {
+
+    const v0 = new THREE.Vector3();
+    const position = geometry.attributes.position;
+
+    for (let i = 0, il = position.count; i < il; i++) {
+        v0.fromBufferAttribute(position, i);
+        vertices.push(v0.clone());
+    }
+}
+
+function populateConstraints () {
+
+    const index = geometry.index;
+    const adjacency = Array.from({ length: vertices.length }, () => new Array());
+
+    for (let i = 0, il = index.count / 3; i < il; i++) {
+
+        const i3 = i * 3;
+
+        const a = index.getX(i3 + 0);
+        const b = index.getX(i3 + 1);
+        const c = index.getX(i3 + 2);
+
+        faces[a].push([b, c]);
+        faces[b].push([c, a]);
+        faces[c].push([a, b]);
+
+        if (!adjacency[b].includes(a)) {
+
+            adjacency[a].push(b);
+            adjacency[b].push(a);
+            constraints.push([a, b]);
+
+        }
+
+        if (!adjacency[c].includes(a)) {
+
+            adjacency[a].push(c);
+            adjacency[c].push(a);
+            constraints.push([a, c]);
+        }
+
+        if (!adjacency[c].includes(b)) {
+
+            adjacency[b].push(c);
+            adjacency[c].push(b);
+            constraints.push([b, c]);
+        }
+    }
+}
+
+function populateColors () {
+
+    // naive edge-coloring implementation, should be optimized.
+    for (let i = 0, il = constraints.length; i < il; i++) {
+
+        const con = constraints[i];
+
+        let k = 0;
+        while (true) {
+
+            while (colors[con[0]][k] !== undefined) k++;
+
+            if (colors[con[1]][k] === undefined) {
+                colors[con[0]][k] = con[1];
+                colors[con[1]][k] = con[0];
+                break;
+            } else {
+                k++;
+            }
+        }
+    }
+}
+
+function dispose () {
+
+    faces = undefined;
+    colors = undefined;
+    constraints = undefined;
+}
+
+let 
+    camera, interacting = false,
+    psel = undefined;
+
+const
+    mouse = new THREE.Vector2(),
+    tmpmouse = new THREE.Vector3(),
+    mouse3d = new THREE.Vector3(),
+    raycaster = new THREE.Raycaster(),
+    plane = new THREE.Plane(undefined, -180),
+    sphere = new THREE.Sphere(undefined, 100);
+
+function init$1 (PerspectiveCamera) {
+
+    camera = PerspectiveCamera;
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseup', onMouseUp);
+}
+
+function updating () {
+
+    if (!interacting) return;
+
+    raycaster.setFromCamera(mouse, camera);
+
+    if (raycaster.ray.intersectSphere(sphere, tmpmouse) != null) {
+        mouse3d.copy(tmpmouse);
+
+        if (psel == undefined) {
+            let dist = Infinity;
+            for (let i = 0; i < vertices.length; i++) {
+                const tmp = mouse3d.distanceTo(vertices[i]);
+
+                if (tmp < dist) {
+                    dist = tmp;
+                    psel = i;
+                }
+            }
+        }
+    }
+
+    plane.normal.copy(camera.position).normalize();
+
+    if (raycaster.ray.intersectPlane(plane, tmpmouse) != null) {
+        mouse3d.copy(tmpmouse);
+    }
+
+    return (interacting && psel) ? true : false;
+}
+
+function onMouseMove (evt) {
+    mouse.x = (evt.pageX / window.innerWidth) * 2 - 1;
+    mouse.y = -(evt.pageY / window.innerHeight) * 2 + 1;
+}
+function onMouseDown (evt) {
+    if (evt.button == 0) {
+        interacting = true;
+    }
+}
+function onMouseUp (evt) {
+    if (evt.button == 0) {
+        interacting = false;
+        psel = undefined;
+    }
+}
+
+var through_vert = /* glsl */`
 precision highp float;
 attribute vec2 position;
 void main() {
@@ -30,7 +198,7 @@ void main() {
 }
 `;
 
-	var constraints_frag = /* glsl */`
+var constraints_frag = /* glsl */`
 precision highp float;
 uniform int cID;
 uniform vec2 tSize;
@@ -73,7 +241,7 @@ void main() {
 }
 `;
 
-	var integrate_frag = /* glsl */`
+var integrate_frag = /* glsl */`
 precision highp float;
 uniform vec2 tSize;
 uniform sampler2D tOriginal;
@@ -91,7 +259,7 @@ void main() {
 }
 `;
 
-	var mouse_frag = /* glsl */`
+var mouse_frag = /* glsl */`
 precision highp float;
 uniform int psel;
 uniform vec2 tSize;
@@ -120,7 +288,7 @@ void main() {
 }
 `;
 
-	var normals_frag = /* glsl */`
+var normals_frag = /* glsl */`
 precision highp float;
 uniform int cID;
 uniform vec2 tSize;
@@ -200,7 +368,7 @@ void main() {
 }
 `;
 
-	var through_frag = /* glsl */`
+var through_frag = /* glsl */`
 precision highp float;
 uniform vec2 tSize;
 uniform sampler2D texture;
@@ -210,673 +378,515 @@ void main() {
 }
 `;
 
-	// shader-import-block
-
-	const copyShader = new THREE.RawShaderMaterial({
-	    uniforms: {
-	        tSize: { type: 'v2' },
-	        texture: { type: 't' }
-	    },
-	    vertexShader: through_vert,
-	    fragmentShader: through_frag,
-	    fog: false,
-	    lights: false,
-	    depthWrite: false,
-	    depthTest: false
-	});
-
-	const integrateShader = copyShader.clone();
-	integrateShader.fragmentShader = integrate_frag;
-	integrateShader.uniforms = {
-	    tSize: { type: 'v2' },
-	    tOriginal: { type: 't' },
-	    tPrevious: { type: 't' },
-	    tPosition: { type: 't' }
-	};
-
-	const mouseShader = copyShader.clone();
-	mouseShader.fragmentShader = mouse_frag;
-	mouseShader.uniforms = {
-	    psel: { value: null },
-	    tSize: { type: 'v2' },
-	    mouse: { type: 'v3' },
-	    tOriginal: { type: 't' },
-	    tPosition: { type: 't' }
-	};
-
-	const constraintsShader = copyShader.clone();
-	constraintsShader.fragmentShader = constraints_frag;
-	constraintsShader.uniforms = {
-	    cID: { value: null },
-	    tSize: { type: 'v2' },
-	    tOriginal: { type: 't' },
-	    tPosition: { type: 't' },
-	    tConstraints: { type: 't' }
-	};
-
-	const normalsShader = copyShader.clone();
-	normalsShader.fragmentShader = normals_frag;
-	normalsShader.uniforms = {
-	    tSize: { type: 'v2' },
-	    tPosition: { type: 't' },
-	    tFace1: { type: 't' },
-	    tFace2: { type: 't' },
-	    tFace3: { type: 't' },
-	};
-
-	let
-	    RESOLUTION, MOUSE,
-	    renderer, mesh, targetRT, normalsRT,
-	    originalRT, previousRT, positionRT,
-	    constraintsRT, facesRT,
-	    steps = 60;
-
-	// setup
-	const
-	    tSize = new THREE.Vector2(),
-	    scene = new THREE.Scene(),
-	    camera = new THREE.Camera();
-
-	function init$1 (WebGLRenderer, vertices, particles, mouse) {
-
-	    // setup
-	    renderer = WebGLRenderer;
-
-	    MOUSE = mouse;
-	    RESOLUTION = Math.ceil(Math.sqrt(vertices.count));
-	    tSize.set(RESOLUTION, RESOLUTION);
-
-	    // geometry
-	    const geometry = new THREE.BufferGeometry();
-	    const positions = new Float32Array([
-	        -1.0, -1.0,
-	        3.0, -1.0,
-	        -1.0, 3.0
-	    ]);
-
-	    geometry.addAttribute('position', new THREE.BufferAttribute(positions, 2));
-
-	    // mesh
-	    mesh = new THREE.Mesh(geometry, copyShader);
-	    mesh.frustumCulled = false;
-	    scene.add(mesh);
-
-	    // render targets
-	    originalRT = createRenderTarget();
-	    targetRT = createRenderTarget();
-	    previousRT = createRenderTarget();
-	    positionRT = createRenderTarget();
-	    normalsRT = createRenderTarget();
-
-	    constraintsRT = Array.from({ length: 2 }, createRenderTarget);
-	    facesRT = Array.from({ length: 3 }, createRenderTarget);
-
-	    // prepare
-	    copyTexture(createPositionTexture(vertices), originalRT);
-	    copyTexture(originalRT, previousRT);
-	    copyTexture(originalRT, positionRT);
+// shader-import-block
+
+const copyShader = new THREE.RawShaderMaterial({
+    uniforms: {
+        tSize: { type: 'v2' },
+        texture: { type: 't' }
+    },
+    vertexShader: through_vert,
+    fragmentShader: through_frag,
+    fog: false,
+    lights: false,
+    depthWrite: false,
+    depthTest: false
+});
+
+const integrateShader = copyShader.clone();
+integrateShader.fragmentShader = integrate_frag;
+integrateShader.uniforms = {
+    tSize: { type: 'v2' },
+    tOriginal: { type: 't' },
+    tPrevious: { type: 't' },
+    tPosition: { type: 't' }
+};
+
+const mouseShader = copyShader.clone();
+mouseShader.fragmentShader = mouse_frag;
+mouseShader.uniforms = {
+    psel: { value: null },
+    tSize: { type: 'v2' },
+    mouse: { type: 'v3' },
+    tOriginal: { type: 't' },
+    tPosition: { type: 't' }
+};
+
+const constraintsShader = copyShader.clone();
+constraintsShader.fragmentShader = constraints_frag;
+constraintsShader.uniforms = {
+    cID: { value: null },
+    tSize: { type: 'v2' },
+    tOriginal: { type: 't' },
+    tPosition: { type: 't' },
+    tConstraints: { type: 't' }
+};
+
+const normalsShader = copyShader.clone();
+normalsShader.fragmentShader = normals_frag;
+normalsShader.uniforms = {
+    tSize: { type: 'v2' },
+    tPosition: { type: 't' },
+    tFace1: { type: 't' },
+    tFace2: { type: 't' },
+    tFace3: { type: 't' },
+};
+
+let
+    RESOLUTION,
+    renderer, mesh, targetRT, normalsRT,
+    originalRT, previousRT, positionRT,
+    constraintsRT, facesRT,
+    steps = 40;
+
+// setup
+const
+    tSize = new THREE.Vector2(),
+    scene = new THREE.Scene(),
+    camera$1 = new THREE.Camera();
+
+function init$2 (WebGLRenderer) {
+
+    // setup
+    renderer = WebGLRenderer;
+
+    RESOLUTION = Math.ceil(Math.sqrt(vertices.length));
+    tSize.set(RESOLUTION, RESOLUTION);
+
+    // geometry
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array([
+        -1.0, -1.0,
+        3.0, -1.0,
+        -1.0, 3.0
+    ]);
+
+    geometry.addAttribute('position', new THREE.BufferAttribute(positions, 2));
+
+    // mesh
+    mesh = new THREE.Mesh(geometry, copyShader);
+    mesh.frustumCulled = false;
+    scene.add(mesh);
+
+    // render targets
+    originalRT = createRenderTarget();
+    targetRT = createRenderTarget();
+    previousRT = createRenderTarget();
+    positionRT = createRenderTarget();
+    normalsRT = createRenderTarget();
+
+    constraintsRT = Array.from({ length: 2 }, createRenderTarget);
+    facesRT = Array.from({ length: 3 }, createRenderTarget);
+
+    // prepare
+    copyTexture(createPositionTexture(), originalRT);
+    copyTexture(originalRT, previousRT);
+    copyTexture(originalRT, positionRT);
 
-	    copyTexture(createConstraintsTexture(particles, 0), constraintsRT[0]);
-	    copyTexture(createConstraintsTexture(particles, 4), constraintsRT[1]);
+    copyTexture(createConstraintsTexture(0), constraintsRT[0]);
+    copyTexture(createConstraintsTexture(4), constraintsRT[1]);
 
-	    copyTexture(createFacesTexture(particles, 0), facesRT[0]);
-	    copyTexture(createFacesTexture(particles, 2), facesRT[1]);
-	    copyTexture(createFacesTexture(particles, 4), facesRT[2]);
+    copyTexture(createFacesTexture(0), facesRT[0]);
+    copyTexture(createFacesTexture(2), facesRT[1]);
+    copyTexture(createFacesTexture(4), facesRT[2]);
 
-	}
+}
 
-	function copyTexture (input, output) {
+function copyTexture (input, output) {
 
-	    mesh.material = copyShader;
-	    copyShader.uniforms.tSize.value = tSize;
-	    copyShader.uniforms.texture.value = input.texture;
+    mesh.material = copyShader;
+    copyShader.uniforms.tSize.value = tSize;
+    copyShader.uniforms.texture.value = input.texture;
 
-	    renderer.setRenderTarget(output);
-	    renderer.render(scene, camera);
+    renderer.setRenderTarget(output);
+    renderer.render(scene, camera$1);
 
-	}
+}
 
-	function createRenderTarget () {
+function createRenderTarget () {
 
-	    return new THREE.WebGLRenderTarget(RESOLUTION, RESOLUTION, {
-	        wrapS: THREE.ClampToEdgeWrapping,
-	        wrapT: THREE.ClampToEdgeWrapping,
-	        minFilter: THREE.NearestFilter,
-	        magFilter: THREE.NearestFilter,
-	        format: THREE.RGBAFormat,
-	        type: THREE.FloatType,
-	        depthTest: false,
-	        depthWrite: false,
-	        depthBuffer: false,
-	        stencilBuffer: false
-	    });
+    return new THREE.WebGLRenderTarget(RESOLUTION, RESOLUTION, {
+        wrapS: THREE.ClampToEdgeWrapping,
+        wrapT: THREE.ClampToEdgeWrapping,
+        minFilter: THREE.NearestFilter,
+        magFilter: THREE.NearestFilter,
+        format: THREE.RGBAFormat,
+        type: THREE.FloatType,
+        depthTest: false,
+        depthWrite: false,
+        depthBuffer: false,
+        stencilBuffer: false
+    });
 
-	}
+}
 
-	function createPositionTexture (vertices, expand) {
+function createPositionTexture () {
 
-	    const data = new Float32Array(RESOLUTION * RESOLUTION * 4);
-	    const length = vertices.array.length;
+    const data = new Float32Array(RESOLUTION * RESOLUTION * 4);
+    const length = vertices.length;
 
-	    for (let i = 0; i < RESOLUTION; i++) {
+    for (let i = 0; i < length; i++) {
 
-	        for (let j = 0; j < RESOLUTION; j++) {
+        const i4 = i * 4;
 
-	            const i3 = i * RESOLUTION * 3 + j * 3;
-	            const i4 = i * RESOLUTION * 4 + j * 4;
+        data[i4] = vertices[i].x;
+        data[i4 + 1] = vertices[i].y;
+        data[i4 + 2] = vertices[i].z;
+    }
 
-	            if (i3 >= length) break;
+    const tmp = {};
+    tmp.texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.FloatType);
+    tmp.texture.minFilter = THREE.NearestFilter;
+    tmp.texture.magFilter = THREE.NearestFilter;
+    tmp.texture.needsUpdate = true;
+    tmp.texture.generateMipmaps = false;
+    tmp.texture.flipY = false;
 
-	            data[i4 + 0] = vertices.array[i3 + 0];
-	            data[i4 + 1] = vertices.array[i3 + 1];
-	            data[i4 + 2] = vertices.array[i3 + 2];
+    return tmp;
 
-	        }
+}
 
-	    }
+function createConstraintsTexture (k) {
 
-	    const tmp = {};
-	    tmp.texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.FloatType);
-	    tmp.texture.minFilter = THREE.NearestFilter;
-	    tmp.texture.magFilter = THREE.NearestFilter;
-	    tmp.texture.needsUpdate = true;
-	    tmp.texture.generateMipmaps = false;
-	    tmp.texture.flipY = false;
+    const data = new Float32Array(RESOLUTION * RESOLUTION * 4);
+    const length = vertices.length;
 
-	    return tmp;
+    for (let i = 0; i < length; i++) {
 
-	}
+        const i4 = i * 4;
 
-	function createConstraintsTexture (particles, k) {
+        data[i4] = (colors[i][k + 0] === undefined) ? -1 : colors[i][k + 0];
+        data[i4 + 1] = (colors[i][k + 1] === undefined) ? -1 : colors[i][k + 1];
+        data[i4 + 2] = (colors[i][k + 2] === undefined) ? -1 : colors[i][k + 2];
+        data[i4 + 3] = (colors[i][k + 3] === undefined) ? -1 : colors[i][k + 3];
 
-	    const data = new Float32Array(RESOLUTION * RESOLUTION * 4);
-	    const length = particles.length;
+    }
 
-	    for (let i = 0; i < length; i++) {
+    const tmp = {};
+    tmp.texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.FloatType);
+    tmp.texture.minFilter = THREE.NearestFilter;
+    tmp.texture.magFilter = THREE.NearestFilter;
+    tmp.texture.needsUpdate = true;
+    tmp.texture.generateMipmaps = false;
+    tmp.texture.flipY = false;
 
-	        const i4 = i * 4;
+    return tmp;
 
-	        data[i4 + 0] = (particles[i].colors[k + 0] === undefined) ? -1 : particles[i].colors[k + 0];
-	        data[i4 + 1] = (particles[i].colors[k + 1] === undefined) ? -1 : particles[i].colors[k + 1];
-	        data[i4 + 2] = (particles[i].colors[k + 2] === undefined) ? -1 : particles[i].colors[k + 2];
-	        data[i4 + 3] = (particles[i].colors[k + 3] === undefined) ? -1 : particles[i].colors[k + 3];
+}
 
-	    }
+function createFacesTexture (k) {
 
-	    const tmp = {};
-	    tmp.texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.FloatType);
-	    tmp.texture.minFilter = THREE.NearestFilter;
-	    tmp.texture.magFilter = THREE.NearestFilter;
-	    tmp.texture.needsUpdate = true;
-	    tmp.texture.generateMipmaps = false;
-	    tmp.texture.flipY = false;
+    const data = new Float32Array(RESOLUTION * RESOLUTION * 4);
+    const length = vertices.length;
 
-	    return tmp;
+    for (let i = 0; i < length; i++) {
 
-	}
+        const i4 = i * 4;
 
-	function createFacesTexture (particles, k) {
+        data[i4] = (faces[i][k + 0] === undefined) ? -1 : faces[i][k + 0][0];
+        data[i4 + 1] = (faces[i][k + 0] === undefined) ? -1 : faces[i][k + 0][1];
+        data[i4 + 2] = (faces[i][k + 1] === undefined) ? -1 : faces[i][k + 1][0];
+        data[i4 + 3] = (faces[i][k + 1] === undefined) ? -1 : faces[i][k + 1][1];
 
-	    const data = new Float32Array(RESOLUTION * RESOLUTION * 4);
-	    const length = particles.length;
+    }
 
-	    for (let i = 0; i < length; i++) {
+    const tmp = {};
+    tmp.texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.FloatType);
+    tmp.texture.minFilter = THREE.NearestFilter;
+    tmp.texture.magFilter = THREE.NearestFilter;
+    tmp.texture.needsUpdate = true;
+    tmp.texture.generateMipmaps = false;
+    tmp.texture.flipY = false;
 
-	        const i4 = i * 4;
+    return tmp;
 
-	        data[i4 + 0] = (particles[i].faces[k + 0] === undefined) ? -1 : particles[i].faces[k + 0][0];
-	        data[i4 + 1] = (particles[i].faces[k + 0] === undefined) ? -1 : particles[i].faces[k + 0][1];
-	        data[i4 + 2] = (particles[i].faces[k + 1] === undefined) ? -1 : particles[i].faces[k + 1][0];
-	        data[i4 + 3] = (particles[i].faces[k + 1] === undefined) ? -1 : particles[i].faces[k + 1][1];
+}
 
-	    }
+function integrate () {
 
-	    const tmp = {};
-	    tmp.texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.FloatType);
-	    tmp.texture.minFilter = THREE.NearestFilter;
-	    tmp.texture.magFilter = THREE.NearestFilter;
-	    tmp.texture.needsUpdate = true;
-	    tmp.texture.generateMipmaps = false;
-	    tmp.texture.flipY = false;
+    mesh.material = integrateShader;
+    integrateShader.uniforms.tSize.value = tSize;
+    integrateShader.uniforms.tOriginal.value = originalRT.texture;
+    integrateShader.uniforms.tPrevious.value = previousRT.texture;
+    integrateShader.uniforms.tPosition.value = positionRT.texture;
 
-	    return tmp;
+    renderer.setRenderTarget(targetRT);
+    renderer.render(scene, camera$1);
 
-	}
+    const tmp = previousRT;
+    previousRT = positionRT;
+    positionRT = targetRT;
+    targetRT = tmp;
 
-	function integrate () {
+}
 
-	    mesh.material = integrateShader;
-	    integrateShader.uniforms.tSize.value = tSize;
-	    integrateShader.uniforms.tOriginal.value = originalRT.texture;
-	    integrateShader.uniforms.tPrevious.value = previousRT.texture;
-	    integrateShader.uniforms.tPosition.value = positionRT.texture;
+function solveConstraints (offset) {
 
-	    renderer.setRenderTarget(targetRT);
-	    renderer.render(scene, camera);
+    const tID = (offset < 4) ? 0 : 1;
+    const cID = offset % 4;
 
-	    const tmp = previousRT;
-	    previousRT = positionRT;
-	    positionRT = targetRT;
-	    targetRT = tmp;
+    mesh.material = constraintsShader;
+    constraintsShader.uniforms.tSize.value = tSize;
+    constraintsShader.uniforms.cID.value = cID;
+    constraintsShader.uniforms.tOriginal.value = originalRT.texture;
+    constraintsShader.uniforms.tPosition.value = positionRT.texture;
+    constraintsShader.uniforms.tConstraints.value = constraintsRT[tID].texture;
 
-	}
+    renderer.setRenderTarget(targetRT);
+    renderer.render(scene, camera$1);
 
-	function solveConstraints (offset) {
+    const tmp = positionRT;
+    positionRT = targetRT;
+    targetRT = tmp;
 
-	    const tID = (offset < 4) ? 0 : 1;
-	    const cID = offset % 4;
+}
 
-	    mesh.material = constraintsShader;
-	    constraintsShader.uniforms.tSize.value = tSize;
-	    constraintsShader.uniforms.cID.value = cID;
-	    constraintsShader.uniforms.tOriginal.value = originalRT.texture;
-	    constraintsShader.uniforms.tPosition.value = positionRT.texture;
-	    constraintsShader.uniforms.tConstraints.value = constraintsRT[tID].texture;
+function mouseOffset () {
 
-	    renderer.setRenderTarget(targetRT);
-	    renderer.render(scene, camera);
+    mesh.material = mouseShader;
+    mouseShader.uniforms.tSize.value = tSize;
+    mouseShader.uniforms.psel.value = psel;
+    mouseShader.uniforms.mouse.value = mouse3d;
+    mouseShader.uniforms.tOriginal.value = originalRT.texture;
+    mouseShader.uniforms.tPosition.value = positionRT.texture;
 
-	    const tmp = positionRT;
-	    positionRT = targetRT;
-	    targetRT = tmp;
+    renderer.setRenderTarget(targetRT);
+    renderer.render(scene, camera$1);
 
-	}
+    const tmp = positionRT;
+    positionRT = targetRT;
+    targetRT = tmp;
 
-	function mouseOffset () {
+}
 
-	    mesh.material = mouseShader;
-	    mouseShader.uniforms.tSize.value = tSize;
-	    mouseShader.uniforms.psel.value = MOUSE.psel;
-	    mouseShader.uniforms.mouse.value = MOUSE.mouse3d;
-	    mouseShader.uniforms.tOriginal.value = originalRT.texture;
-	    mouseShader.uniforms.tPosition.value = positionRT.texture;
+function computeVertexNormals () {
 
-	    renderer.setRenderTarget(targetRT);
-	    renderer.render(scene, camera);
+    mesh.material = normalsShader;
+    normalsShader.uniforms.tSize.value = tSize;
+    normalsShader.uniforms.tPosition.value = positionRT.texture;
+    normalsShader.uniforms.tFace1.value = facesRT[0].texture;
+    normalsShader.uniforms.tFace2.value = facesRT[1].texture;
+    normalsShader.uniforms.tFace3.value = facesRT[2].texture;
 
-	    const tmp = positionRT;
-	    positionRT = targetRT;
-	    targetRT = tmp;
+    renderer.setRenderTarget(normalsRT);
+    renderer.render(scene, camera$1);
 
-	}
+}
 
-	function computeVertexNormals () {
+function update () {
 
-	    mesh.material = normalsShader;
-	    normalsShader.uniforms.tSize.value = tSize;
-	    normalsShader.uniforms.tPosition.value = positionRT.texture;
-	    normalsShader.uniforms.tFace1.value = facesRT[0].texture;
-	    normalsShader.uniforms.tFace2.value = facesRT[1].texture;
-	    normalsShader.uniforms.tFace3.value = facesRT[2].texture;
+    integrate();
 
-	    renderer.setRenderTarget(normalsRT);
-	    renderer.render(scene, camera);
+    for (let i = 0; i < steps; i++) {
 
-	}
+        if (updating()) mouseOffset();
 
-	function update () {
+        for (let j = 0; j < 8; j++) {
 
-	    integrate();
+            solveConstraints(j);
 
-	    for (let i = 0; i < steps; i++) {
+        }
 
-	        if (MOUSE.updating()) mouseOffset();
+        for (let j = 7; j >= 0; j--) {
 
-	        for (let j = 0; j < 8; j++) {
+            solveConstraints(j);
 
-	            solveConstraints(j);
+        }
 
-	        }
+    }
 
-	        for (let j = 7; j >= 0; j--) {
+    computeVertexNormals();
+}
 
-	            solveConstraints(j);
+let RESOLUTION$1,
+    mesh$1;
 
-	        }
+function init$3( scene ) {
 
-	    }
+    RESOLUTION$1 = Math.ceil( Math.sqrt( vertices.length ) );
 
-	    computeVertexNormals();
-	}
+    const material = new THREE.MeshPhysicalMaterial({
+        color: 0xffda20,
+        metalness: 0.1,
+        roughness: 0.5,
+        clearcoat: 0.8,
+        clearcoatRoughness: 0.3,
+        dithering: true
+    });
 
-	let RESOLUTION$1,
-	    mesh$1;
-
-	function init$2( scene, geo ) {
-
-	    RESOLUTION$1 = Math.ceil(Math.sqrt(geo.attributes.position.count));
-
-	    const material = new THREE.MeshPhysicalMaterial({
-	        color: 0xffda20,
-	        metalness: 0.1,
-	        roughness: 0.5,
-	        clearcoat: 0.8,
-	        clearcoatRoughness: 0.3,
-	        dithering: true
-	    });
-
-	    material.onBeforeCompile = function (shader) {
-	        shader.uniforms.tPosition = { value: positionRT.texture };
-	        shader.uniforms.tNormal = { value: normalsRT.texture };
-	        shader.vertexShader = 'uniform sampler2D tPosition;\nuniform sampler2D tNormal;\n' + shader.vertexShader;
-	        shader.vertexShader = shader.vertexShader.replace(
-	            '#include <beginnormal_vertex>',
-	            `vec3 transformed = texture2D(tPosition, position.xy).xyz;
+    material.onBeforeCompile = function (shader) {
+        shader.uniforms.tPosition = { value: positionRT.texture };
+        shader.uniforms.tNormal = { value: normalsRT.texture };
+        shader.vertexShader = 'uniform sampler2D tPosition;\nuniform sampler2D tNormal;\n' + shader.vertexShader;
+        shader.vertexShader = shader.vertexShader.replace(
+            '#include <beginnormal_vertex>',
+            `vec3 transformed = texture2D(tPosition, position.xy).xyz;
                         vec3 objectNormal = normalize( texture2D( tNormal, position.xy ).xyz );
                         `
-	        );
-	        shader.vertexShader = shader.vertexShader.replace(
-	            '#include <begin_vertex>',
-	            ''
-	        );
-	    };
+        );
+        shader.vertexShader = shader.vertexShader.replace(
+            '#include <begin_vertex>',
+            ''
+        );
+    };
 
-	    const depthMaterial = new THREE.MeshDepthMaterial();
-	    depthMaterial.onBeforeCompile = function (shader) {
-	        shader.uniforms.tPosition = { value: positionRT.texture };
-	        shader.vertexShader = 'uniform sampler2D tPosition;\n' + shader.vertexShader;
-	        shader.vertexShader = shader.vertexShader.replace(
-	            '#include <begin_vertex>',
-	            `vec3 transformed = texture2D( tPosition, position.xy ).xyz;`
-	        );
-	    };
+    const depthMaterial = new THREE.MeshDepthMaterial();
+    depthMaterial.onBeforeCompile = function (shader) {
+        shader.uniforms.tPosition = { value: positionRT.texture };
+        shader.vertexShader = 'uniform sampler2D tPosition;\n' + shader.vertexShader;
+        shader.vertexShader = shader.vertexShader.replace(
+            '#include <begin_vertex>',
+            `vec3 transformed = texture2D( tPosition, position.xy ).xyz;`
+        );
+    };
 
-	    const position = new Float32Array(RESOLUTION$1 * RESOLUTION$1 * 3);
-	    for (let i = 0, il = RESOLUTION$1 * RESOLUTION$1; i < il; i++) {
+    const position = new Float32Array(RESOLUTION$1 * RESOLUTION$1 * 3);
+    for (let i = 0, il = RESOLUTION$1 * RESOLUTION$1; i < il; i++) {
 
-	        const i3 = i * 3;
-	        position[i3 + 0] = (i % (RESOLUTION$1)) / (RESOLUTION$1) + 0.5 / (RESOLUTION$1);
-	        position[i3 + 1] = ~~(i / (RESOLUTION$1)) / (RESOLUTION$1) + 0.5 / (RESOLUTION$1);
+        const i3 = i * 3;
+        position[i3 + 0] = (i % (RESOLUTION$1)) / (RESOLUTION$1) + 0.5 / (RESOLUTION$1);
+        position[i3 + 1] = ~~(i / (RESOLUTION$1)) / (RESOLUTION$1) + 0.5 / (RESOLUTION$1);
 
-	    }
+    }
 
-	    const geometry = new THREE.BufferGeometry();
-	    geometry.setIndex(geo.index);
-	    geometry.addAttribute('position', new THREE.BufferAttribute(position, 3));
+    const geometry$1 = new THREE.BufferGeometry();
+    geometry$1.setIndex( geometry.index );
+    geometry$1.addAttribute('position', new THREE.BufferAttribute(position, 3));
 
-	    mesh$1 = new THREE.Mesh(geometry, material);
-	    mesh$1.customDepthMaterial = depthMaterial;
-	    mesh$1.castShadow = true;
+    mesh$1 = new THREE.Mesh(geometry$1, material);
+    mesh$1.customDepthMaterial = depthMaterial;
+    mesh$1.castShadow = true;
 
-	    scene.add(mesh$1);
-	}
+    scene.add(mesh$1);
+}
 
-	let
-	    objects;
+let
+    objects;
 
-	const
-	    clock = new THREE.Clock();
+const
+    clock = new THREE.Clock();
 
-	function init$3 (scene) {
+function init$4 (scene) {
 
-	    // lights
-	    const light = new THREE.AmbientLight(0x455045, 0);
+    // lights
+    const light = new THREE.AmbientLight(0x455045, 0);
 
-	    const spotLight = new THREE.SpotLight(0xfd8b8b, 0, 4000, Math.PI / 6, 0.2, 0.11);
-	    spotLight.position.set(0.9, 0.1, -0.5).multiplyScalar(400);
-	    spotLight.castShadow = true;
-	    spotLight.shadow.radius = 20;
-	    spotLight.shadow.camera.far = 4000;
-	    spotLight.shadow.mapSize.height = 4096;
-	    spotLight.shadow.mapSize.width = 4096;
+    const spotLight = new THREE.SpotLight(0xfd8b8b, 0, 4000, Math.PI / 6, 0.2, 0.11);
+    spotLight.position.set(0.9, 0.1, -0.5).multiplyScalar(400);
+    spotLight.castShadow = true;
+    spotLight.shadow.radius = 20;
+    spotLight.shadow.camera.far = 4000;
+    spotLight.shadow.mapSize.height = 4096;
+    spotLight.shadow.mapSize.width = 4096;
 
-	    const spotLight2 = new THREE.SpotLight(0x6b7af4, 0, 4000, Math.PI / 6, 0.2, 0.11);
-	    spotLight2.position.set(-0.91, 0.1, -0.5).multiplyScalar(400);
-	    spotLight2.castShadow = true;
-	    spotLight2.shadow.radius = 20;
-	    spotLight2.shadow.camera.far = 4000;
-	    spotLight2.shadow.mapSize.height = 4096;
-	    spotLight2.shadow.mapSize.width = 4096;
+    const spotLight2 = new THREE.SpotLight(0x6b7af4, 0, 4000, Math.PI / 6, 0.2, 0.11);
+    spotLight2.position.set(-0.91, 0.1, -0.5).multiplyScalar(400);
+    spotLight2.castShadow = true;
+    spotLight2.shadow.radius = 20;
+    spotLight2.shadow.camera.far = 4000;
+    spotLight2.shadow.mapSize.height = 4096;
+    spotLight2.shadow.mapSize.width = 4096;
 
-	    const spotLight3 = new THREE.SpotLight(0x858585, 0, 4000, Math.PI / 5.5, 1.4, 0.02);
-	    spotLight3.position.set(0, 0, -1).multiplyScalar(400);
-	    spotLight3.castShadow = true;
-	    spotLight3.shadow.radius = 5;
-	    spotLight3.shadow.camera.far = 4000;
-	    spotLight3.shadow.mapSize.height = 4096;
-	    spotLight3.shadow.mapSize.width = 4096;
-
-	    scene.add(light, spotLight, spotLight2, spotLight3);
-	    objects = [light, spotLight, spotLight2, spotLight3];
-
-	}
-
-	function update$1 () {
-
-	    function easing (t, c) {
-	        if ((t /= 1 / 2) < 1) return c / 2 * t * t * t;
-	        return c / 2 * ((t -= 2) * t * t + 2);
-	    }
-
-	    const time = clock.getElapsedTime();
-
-	    if (time > 1 && time < 4) {
-
-	        for (let i = 0; i < objects.length; i++) {
-
-	            objects[i].intensity = easing((time - 1) / 3, 2.6);
-
-	        }
-
-	    }
-
-	}
-
-	let 
-	    camera$1, particles,
-	    interacting = false,
-	    psel = undefined;
-
-	const
-	    mouse = new THREE.Vector2(),
-	    tmpmouse = new THREE.Vector3(),
-	    mouse3d = new THREE.Vector3(),
-	    raycaster = new THREE.Raycaster(),
-	    plane = new THREE.Plane( undefined, -180 ),
-	    sphere = new THREE.Sphere( undefined, 100 );
-
-	function init$4(verts, cam) {
-
-	    particles = verts;
-	    camera$1 = cam;
-	}
-
-	function updating() {
-
-	    if (!interacting) return;
-
-	    raycaster.setFromCamera(mouse, camera$1);
-
-	    if (raycaster.ray.intersectSphere(sphere, tmpmouse) != null) {
-	        mouse3d.copy(tmpmouse);
-
-	        if (psel == undefined) {
-	            let dist = Infinity;
-	            for (let i = 0; i < particles.length; i++) {
-	                const tmp = mouse3d.distanceTo(particles[i].original);
+    const spotLight3 = new THREE.SpotLight(0x858585, 0, 4000, Math.PI / 5.5, 1.4, 0.02);
+    spotLight3.position.set(0, 0, -1).multiplyScalar(400);
+    spotLight3.castShadow = true;
+    spotLight3.shadow.radius = 5;
+    spotLight3.shadow.camera.far = 4000;
+    spotLight3.shadow.mapSize.height = 4096;
+    spotLight3.shadow.mapSize.width = 4096;
 
-	                if (tmp < dist) {
-	                    dist = tmp;
-	                    psel = i;
-	                }
-	            }
-	        }
-	    }
+    scene.add(light, spotLight, spotLight2, spotLight3);
+    objects = [light, spotLight, spotLight2, spotLight3];
 
-	    plane.normal.copy(camera$1.position).normalize();
+}
 
-	    if (raycaster.ray.intersectPlane(plane, tmpmouse) != null) {
-	        mouse3d.copy(tmpmouse);
-	    }
+function update$1 () {
 
-	    return (interacting && psel) ? true: false;
-	}
+    function easing (t, c) {
+        if ((t /= 1 / 2) < 1) return c / 2 * t * t * t;
+        return c / 2 * ((t -= 2) * t * t + 2);
+    }
 
-	window.onmousemove = function(evt) {
-	    mouse.x = (evt.pageX / window.innerWidth) * 2 - 1;
-	    mouse.y = -(evt.pageY / window.innerHeight) * 2 + 1;
-	};
+    const time = clock.getElapsedTime();
 
-	window.onmousedown = function(evt) {
-	    if (evt.button == 0) {
-	        interacting = true;
-	    }
-	};
+    if (time > 1 && time < 4) {
 
-	window.onmouseup = function(evt) {
-	    if (evt.button == 0) {
-	        interacting = false;
-	        psel = undefined;
-	    }
-	};
+        for (let i = 0; i < objects.length; i++) {
 
-	var MOUSE$1 = /*#__PURE__*/Object.freeze({
-		__proto__: null,
-		init: init$4,
-		updating: updating,
-		mouse3d: mouse3d,
-		get psel () { return psel; }
-	});
+            objects[i].intensity = easing((time - 1) / 3, 2.6);
 
-	let 
-	    renderer$1, camera$2, scene$1,
-	    position;
+        }
 
-	const
-	    particles$1 = [],
-	    constraints = [],
-	    v0 = new THREE.Vector3();
+    }
 
-	function init$5 () {
+}
 
-	    // renderer
-	    renderer$1 = new THREE.WebGLRenderer({ antialias: true });
-	    renderer$1.setSize(window.innerWidth, window.innerHeight);
-	    renderer$1.setPixelRatio(window.devicePixelRatio);
+let
+    renderer$1, camera$2, scene$1;
 
-	    renderer$1.gammaOutput = true;
-	    renderer$1.physicallyCorrectLights = true;
+function init$5 () {
 
-	    renderer$1.shadowMap.enabled = true;
-	    renderer$1.shadowMap.type = THREE.PCFShadowMap;
+    // renderer
+    renderer$1 = new THREE.WebGLRenderer({ antialias: true });
+    renderer$1.setSize(window.innerWidth, window.innerHeight);
+    renderer$1.setPixelRatio(window.devicePixelRatio);
 
-	    document.body.appendChild(renderer$1.domElement);
+    renderer$1.gammaOutput = true;
+    renderer$1.physicallyCorrectLights = true;
 
-	    // scene
-	    scene$1 = new THREE.Scene();
-	    scene$1.background = new THREE.Color(0x121312);
+    renderer$1.shadowMap.enabled = true;
+    renderer$1.shadowMap.type = THREE.PCFShadowMap;
 
-	    camera$2 = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 10000);
-	    camera$2.position.z = -350;
-	    camera$2.position.y = -50;
-	    camera$2.position.x = 0;
-	    camera$2.lookAt(new THREE.Vector3());
+    document.body.appendChild(renderer$1.domElement);
 
-	    const ico = new THREE.IcosahedronBufferGeometry(100, 5);
-	    const geometry = THREE.BufferGeometryUtils.mergeVertices(ico, 1.5);
-	    position = geometry.attributes.position;
+    // scene
+    scene$1 = new THREE.Scene();
+    scene$1.background = new THREE.Color(0x121312);
 
-	    createParticles(geometry);
+    // camera
+    camera$2 = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 10000);
+    camera$2.position.z = -350;
+    camera$2.position.y = -50;
+    camera$2.position.x = 0;
+    camera$2.lookAt(new THREE.Vector3());
 
-	    // initialization block;
-	    init(scene$1);
-	    init$3(scene$1);
-	    init$2(scene$1, geometry);
+    // pre-calculate geometry information
+    calculate();
 
-	    init$4(particles$1, camera$2);
-	    init$1(renderer$1, position, particles$1, MOUSE$1);
+    // initialization block;
+    init(scene$1);
+    init$4(scene$1);
+    init$3(scene$1);
 
-	    animate();
-	}
+    init$1(camera$2);
+    init$2(renderer$1);
 
-	function createParticles (geometry) {
+    // release mem for GC
+    dispose();
 
-	    const index = geometry.index;
+    animate();
+}
 
-	    for (let i = 0, len = position.count; i < len; i++) {
-	        v0.fromBufferAttribute(position, i);
-	        particles$1.push(new Particle(v0.x, v0.y, v0.z));
-	    }
+function animate () {
 
-	    for (let i = 0, il = index.count / 3; i < il; i++) {
+    const t = requestAnimationFrame(animate);
 
-	        const i3 = i * 3;
+    update$1();
+    update();
 
-	        const a = index.getX(i3 + 0);
-	        const b = index.getX(i3 + 1);
-	        const c = index.getX(i3 + 2);
+    renderer$1.setRenderTarget(null);
+    renderer$1.render(scene$1, camera$2);
+}
 
-	        particles$1[a].faces.push([b, c]);
-	        particles$1[b].faces.push([c, a]);
-	        particles$1[c].faces.push([a, b]);
+window.onresize = function () {
 
-	        if (!particles$1[b].adj.includes(a)) {
-	            const dist = particles$1[a].original.distanceTo(particles$1[b].original);
+    const w = window.innerWidth;
+    const h = window.innerHeight;
 
-	            particles$1[a].adj.push(b);
-	            particles$1[b].adj.push(a);
-	            constraints.push([a, b, dist * dist]);
-	        }
+    camera$2.aspect = w / h;
+    camera$2.updateProjectionMatrix();
 
-	        if (!particles$1[c].adj.includes(a)) {
-	            const dist = particles$1[a].original.distanceTo(particles$1[c].original);
+    renderer$1.setSize(w, h);
+};
 
-	            particles$1[a].adj.push(c);
-	            particles$1[c].adj.push(a);
-	            constraints.push([a, c, dist * dist]);
-	        }
-
-	        if (!particles$1[c].adj.includes(b)) {
-	            const dist = particles$1[b].original.distanceTo(particles$1[c].original);
-
-	            particles$1[b].adj.push(c);
-	            particles$1[c].adj.push(b);
-	            constraints.push([b, c, dist * dist]);
-	        }
-	    }
-
-	    for (let i = 0, il = constraints.length; i < il; i++) {
-
-	        const con = constraints[i];
-
-	        let k = 1;
-	        while (true) {
-
-	            while (particles$1[con[0]].colors[k] !== undefined) k++;
-
-	            if (particles$1[con[1]].colors[k] === undefined) {
-	                con.push(k);
-	                particles$1[con[0]].colors[k] = con[1];
-	                particles$1[con[1]].colors[k] = con[0];
-	                break;
-	            } else {
-	                k++;
-	            }
-	        }
-	    }
-	}
-
-	function animate () {
-
-	    const t = requestAnimationFrame(animate);
-
-	    update$1();
-	    update();
-
-	    renderer$1.setRenderTarget(null);
-	    renderer$1.render(scene$1, camera$2);
-	}
-
-	window.onresize = function () {
-	    const w = window.innerWidth;
-	    const h = window.innerHeight;
-
-	    camera$2.aspect = w / h;
-	    camera$2.updateProjectionMatrix();
-
-	    renderer$1.setSize(w, h);
-	};
-
-	init$5();
-
-}());
+init$5();
