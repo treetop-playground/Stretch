@@ -20,7 +20,8 @@ let
 const
     tSize = new THREE.Vector2(),
     scene = new THREE.Scene(),
-    camera = new THREE.Camera();
+    camera = new THREE.Camera(),
+    clock = new THREE.Clock();
 
 function init (WebGLRenderer) {
 
@@ -181,8 +182,12 @@ function createFacesTexture (k) {
 
 function integrate () {
 
+    const dt = clock.getDelta();
+    const dt2 = ( dt > 0.016 ) ? 0.016 : dt;
+
     mesh.material = integrateShader;
     integrateShader.uniforms.tSize.value = tSize;
+    integrateShader.uniforms.dt2.value = dt2*dt2;
     integrateShader.uniforms.tOriginal.value = originalRT.texture;
     integrateShader.uniforms.tPrevious.value = previousRT.texture;
     integrateShader.uniforms.tPosition.value = positionRT.texture;
