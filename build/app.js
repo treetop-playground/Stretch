@@ -419,8 +419,7 @@ let
 const
     tSize = new THREE.Vector2(),
     scene = new THREE.Scene(),
-    camera$1 = new THREE.Camera(),
-    clock = new THREE.Clock();
+    camera$1 = new THREE.Camera();
 
 function init$2 (WebGLRenderer) {
 
@@ -453,23 +452,23 @@ function init$2 (WebGLRenderer) {
     positionRT = createRenderTarget();
     normalsRT = createRenderTarget();
 
-    constraintsRT = Array.from( { length: 4 }, createURenderTarget );
-    facesRT = Array.from( { length: 6 }, createURenderTarget );
+    constraintsRT = Array.from({ length: 4 }, createURenderTarget);
+    facesRT = Array.from({ length: 6 }, createURenderTarget);
 
     // prepare
     copyTexture(createPositionTexture(), originalRT);
     copyTexture(originalRT, previousRT);
     copyTexture(originalRT, positionRT);
 
-    for ( let i = 0; i < 4; i++ ) {
+    for (let i = 0; i < 4; i++) {
 
-        copyTexture( createConstraintsTexture( i*2 ), constraintsRT[i] );
+        copyTexture(createConstraintsTexture(i * 2), constraintsRT[i]);
 
     }
 
-    for ( let i = 0; i < 6; i++ ) {
+    for (let i = 0; i < 6; i++) {
 
-        copyTexture( createFacesTexture( i ), facesRT[i] );
+        copyTexture(createFacesTexture(i), facesRT[i]);
 
     }
 
@@ -486,13 +485,13 @@ function copyTexture (input, output) {
 
 }
 
-function createURenderTarget() {
+function createURenderTarget () {
 
-    createRenderTarget( true );
+    return createRenderTarget(true);
 
 }
 
-function createRenderTarget( unsigned ) {
+function createRenderTarget (unsigned) {
 
     return new THREE.WebGLRenderTarget(RESOLUTION, RESOLUTION, {
         wrapS: THREE.ClampToEdgeWrapping,
@@ -500,7 +499,7 @@ function createRenderTarget( unsigned ) {
         minFilter: THREE.NearestFilter,
         magFilter: THREE.NearestFilter,
         format: THREE.RGBAFormat,
-        type: ( unsigned ) ? THREE.UnsignedByteType : THREE.HalfFloatType,
+        type: (unsigned) ? THREE.UnsignedByteType : THREE.FloatType,
         depthTest: false,
         depthWrite: false,
         depthBuffer: false,
@@ -544,21 +543,21 @@ function createConstraintsTexture (k) {
 
         const i4 = i * 4;
 
-        for ( let j = 0; j < 2; j++ ) {
+        for (let j = 0; j < 2; j++) {
 
-            let idx = colors[ i ][ k + j ];
+            let idx = colors[i][k + j];
 
-            if ( idx == undefined ) idx = (length+1);
+            if (idx == undefined) idx = (length + 1);
 
-            data[ i4 + j*2 + 0 ] = idx % 256;
-            data[ i4 + j*2 + 1 ] = ~ ~ ( idx / 256 );
+            data[i4 + j * 2 + 0] = idx % 256;
+            data[i4 + j * 2 + 1] = ~~(idx / 256);
 
         }
 
     }
 
     const tmp = {};
-    tmp.texture = new THREE.DataTexture( data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.UnsignedByteType );
+    tmp.texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.UnsignedByteType);
     tmp.texture.minFilter = THREE.NearestFilter;
     tmp.texture.magFilter = THREE.NearestFilter;
     tmp.texture.needsUpdate = true;
@@ -578,21 +577,21 @@ function createFacesTexture (k) {
 
         const i4 = i * 4;
 
-        const face = faces[ i ][ k ];
+        const face = faces[i][k];
 
-        for ( let j = 0; j < 2; j++ ) {
+        for (let j = 0; j < 2; j++) {
 
-            const idx = ( face == undefined ) ? (length+1) : face[j];
+            const idx = (face == undefined) ? (length + 1) : face[j];
 
-            data[ i4 + j*2 + 0 ] = idx % 256;
-            data[ i4 + j*2 + 1 ] = ~ ~ ( idx / 256 );
+            data[i4 + j * 2 + 0] = idx % 256;
+            data[i4 + j * 2 + 1] = ~~(idx / 256);
 
         }
 
     }
 
     const tmp = {};
-    tmp.texture = new THREE.DataTexture( data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.UnsignedByteType );
+    tmp.texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.UnsignedByteType);
     tmp.texture.minFilter = THREE.NearestFilter;
     tmp.texture.magFilter = THREE.NearestFilter;
     tmp.texture.needsUpdate = true;
@@ -605,12 +604,9 @@ function createFacesTexture (k) {
 
 function integrate () {
 
-    let dt = clock.getDelta();
-    dt = ( dt > 0.016 ) ? 0.016 : dt;
-
     mesh.material = integrateShader;
     integrateShader.uniforms.tSize.value = tSize;
-    integrateShader.uniforms.dt.value = dt;
+    integrateShader.uniforms.dt.value = 0.016;
     integrateShader.uniforms.tOriginal.value = originalRT.texture;
     integrateShader.uniforms.tPrevious.value = previousRT.texture;
     integrateShader.uniforms.tPosition.value = positionRT.texture;
@@ -627,7 +623,7 @@ function integrate () {
 
 function solveConstraints (offset) {
 
-    const tID = ~ ~ ( offset / 2 );
+    const tID = ~~(offset / 2);
     const cID = offset % 2;
 
     mesh.material = constraintsShader;
@@ -665,17 +661,17 @@ function mouseOffset () {
 
 }
 
-function computeVertexNormals( id ) {
+function computeVertexNormals (id) {
 
     mesh.material = normalsShader;
-    normalsShader.uniforms.reset.value = ( id == 0 ) ? 1.0 : 0.0;
+    normalsShader.uniforms.reset.value = (id == 0) ? 1.0 : 0.0;
     normalsShader.uniforms.length.value = vertices.length;
     normalsShader.uniforms.tSize.value = tSize;
     normalsShader.uniforms.tPosition.value = positionRT.texture;
     normalsShader.uniforms.tNormal.value = normalsRT.texture;
     normalsShader.uniforms.tFace.value = facesRT[id].texture;
 
-    renderer.setRenderTarget( ntargetRT );
+    renderer.setRenderTarget(ntargetRT);
     renderer.render(scene, camera$1);
 
     const tmp = normalsRT;
@@ -698,9 +694,9 @@ function update () {
         }
     }
 
-    for ( let i = 0; i < 6; i++ ) {
+    for (let i = 0; i < 6; i++) {
 
-        computeVertexNormals( i );
+        computeVertexNormals(i);
 
     }
 }
@@ -930,7 +926,7 @@ let
     objects;
 
 const
-    clock$1 = new THREE.Clock();
+    clock = new THREE.Clock();
 
 function init$4 (scene) {
 
@@ -984,7 +980,7 @@ function update$1 () {
         return c / 2 * ((t -= 2) * t * t + 2);
     }
 
-    const time = clock$1.getElapsedTime();
+    const time = clock.getElapsedTime();
 
     if (time > 1 && time < 4) {
 
