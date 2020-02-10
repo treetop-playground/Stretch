@@ -38,7 +38,7 @@ function init (WebGLRenderer) {
         -1.0, 3.0
     ]);
 
-    geometry.addAttribute('position', new THREE.BufferAttribute(positions, 2));
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 2));
 
     // mesh
     mesh = new THREE.Mesh(geometry, copyShader);

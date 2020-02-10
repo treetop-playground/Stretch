@@ -22,7 +22,6 @@ function init (scene) {
     const spotLight2 = new THREE.SpotLight(0x4a7fe8, 0, 4000, Math.PI / 6, 0.2, 0.11);
     spotLight2.baseIntensity = 2.6;
     spotLight2.position.set(-0.91, 0.1, -0.5).multiplyScalar(400);
-    spotLight2.baseIntensity = 2.6;
     spotLight2.castShadow = true;
     spotLight2.shadow.radius = 20;
     spotLight2.shadow.camera.far = 4000;
