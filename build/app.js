@@ -234,7 +234,7 @@ void main() {
 	float restDist = dot( offOrg, offOrg );
 	float curDist = dot( offCur, offCur );
 	float diff = restDist / ( curDist + restDist ) - 0.5;
-	if ( diff > 0.0 ) diff *= 0.2;
+	if ( diff > 0.0 ) diff *= 0.25;
 	if ( id == -1.0 ) diff = 0.0;
 	posA -= offCur * diff * 0.52;
 	gl_FragColor = vec4( posA, 1.0 );
@@ -275,14 +275,22 @@ vec2 getUV( float id ) {
 	return vec2( x + off, y + off );
 }
 void main() {
+
+    vec4 diff, proj;
+
 	vec2 uv = gl_FragCoord.xy / tSize.xy;
 	vec3 pos = texture2D( tPosition, uv ).xyz;
 	vec3 org = texture2D( tOriginal, uv ).xyz;
 	uv = getUV( float( psel ) );
 	vec3 ref = texture2D( tOriginal, uv ).xyz;
 	vec3 offset = mouse - ref;
-	if ( distance( org, ref ) <= 15.0 )  {
-		pos = org + offset;
+	if ( distance( org, ref ) <= 05.0 )  {
+	
+	    diff = ref - org;
+	    
+	    proj = dot(diff, offset) / dot(offset, offset) * org;
+	    
+		pos = org + proj + offset;
 	}
 	gl_FragColor = vec4( pos, 1.0 );
 }
@@ -679,7 +687,7 @@ function update () {
 
     for (let i = 0; i < steps; i++) {
 
-        if (updating()) mouseOffset();
+        if (updating() && (i + 5) < steps) mouseOffset();
 
         for (let j = 0; j < 8; j++) {
 
