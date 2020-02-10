@@ -244,13 +244,15 @@ void main() {
 var integrate_frag = /* glsl */`
 precision highp float;
 
-uniform float dt2;
+uniform float dt;
 uniform vec2 tSize;
 
 uniform sampler2D tOriginal;
 uniform sampler2D tPrevious;
 uniform sampler2D tPosition;
 void main() {
+
+    float dt2 = dt * dt;
 
 	vec2 uv = gl_FragCoord.xy / tSize.xy;
 	vec3 org = texture2D( tOriginal, uv ).xyz;
@@ -407,7 +409,7 @@ const copyShader = new THREE.RawShaderMaterial({
 const integrateShader = copyShader.clone();
 integrateShader.fragmentShader = integrate_frag;
 integrateShader.uniforms = {
-    dt2: { type: 'f' },
+    dt: { type: 'f' },
     tSize: { type: 'v2' },
     tOriginal: { type: 't' },
     tPrevious: { type: 't' },
@@ -617,12 +619,12 @@ function createFacesTexture (k) {
 
 function integrate () {
 
-    const dt = clock.getDelta();
-    const dt2 = ( dt > 0.016 ) ? 0.016 : dt;
+    let dt = clock.getDelta();
+    dt = ( dt > 0.016 ) ? 0.016 : dt;
 
     mesh.material = integrateShader;
     integrateShader.uniforms.tSize.value = tSize;
-    integrateShader.uniforms.dt2.value = dt2*dt2;
+    integrateShader.uniforms.dt.value = dt;
     integrateShader.uniforms.tOriginal.value = originalRT.texture;
     integrateShader.uniforms.tPrevious.value = previousRT.texture;
     integrateShader.uniforms.tPosition.value = positionRT.texture;
