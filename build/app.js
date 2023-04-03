@@ -722,11 +722,11 @@ function init$3(scene) {
         color: 0xffda20,
         bumpMap: bmp,
         bumpScale: 0.25,
-        metalness: 0,
-        roughness: 0.9,
-        // clearcoat: 0.8,
-        // clearcoatRoughness: 0.35,
-        sheen: new THREE.Color(0, 0, 1),
+        metalness: 0.1,
+        roughness: 0.6,
+        clearcoat: 0.8,
+        clearcoatRoughness: 0.35,
+        sheen: new THREE.Color(0.2, 0.2, 1).multiplyScalar(1 / 6),
         dithering: true
 
     });
@@ -785,9 +785,9 @@ let
 const
     clock$1 = new THREE.Clock();
 
-function update$1 () {
+function update$1() {
 
-    function easing (t, c) {
+    function easing(t, c) {
         if ((t /= 1 / 2) < 1) return c / 2 * t * t * t;
         return c / 2 * ((t -= 2) * t * t + 2);
     }
