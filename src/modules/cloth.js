@@ -1,13 +1,11 @@
 import * as PRE from './pre.js';
 import * as FBO from './fbo.js';
 
-import physical_frag from '../glsl/physical.frag.js';
-
 let
     RESOLUTION,
     mesh;
 
-function init (scene) {
+function init(scene) {
 
     RESOLUTION = Math.ceil(Math.sqrt(PRE.vertices.length));
 
@@ -20,10 +18,11 @@ function init (scene) {
         color: 0xffda20,
         bumpMap: bmp,
         bumpScale: 0.25,
-        metalness: 0.1,
-        roughness: 0.6,
-        clearcoat: 0.8,
-        clearcoatRoughness: 0.35,
+        metalness: 0,
+        roughness: 0.9,
+        // clearcoat: 0.8,
+        // clearcoatRoughness: 0.35,
+        sheen: new THREE.Color(0, 0, 1),
         dithering: true
 
     });
@@ -41,10 +40,6 @@ function init (scene) {
         shader.vertexShader = shader.vertexShader.replace(
             '#include <begin_vertex>',
             ''
-        );
-        shader.fragmentShader = shader.fragmentShader.replace(
-            '#include <lights_physical_pars_fragment>',
-            physical_frag
         );
     };
 

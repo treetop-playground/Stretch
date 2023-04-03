@@ -419,9 +419,10 @@ let
 const
     tSize = new THREE.Vector2(),
     scene = new THREE.Scene(),
-    camera$1 = new THREE.Camera();
+    camera$1 = new THREE.Camera(),
+    clock = new THREE.Clock();
 
-function init$2 (WebGLRenderer) {
+function init$2(WebGLRenderer) {
 
     // setup
     renderer = WebGLRenderer;
@@ -474,7 +475,7 @@ function init$2 (WebGLRenderer) {
 
 }
 
-function copyTexture (input, output) {
+function copyTexture(input, output) {
 
     mesh.material = copyShader;
     copyShader.uniforms.tSize.value = tSize;
@@ -485,13 +486,13 @@ function copyTexture (input, output) {
 
 }
 
-function createURenderTarget () {
+function createURenderTarget() {
 
     return createRenderTarget(true);
 
 }
 
-function createRenderTarget (unsigned) {
+function createRenderTarget(unsigned) {
 
     return new THREE.WebGLRenderTarget(RESOLUTION, RESOLUTION, {
         wrapS: THREE.ClampToEdgeWrapping,
@@ -508,7 +509,7 @@ function createRenderTarget (unsigned) {
 
 }
 
-function createPositionTexture () {
+function createPositionTexture() {
 
     const data = new Float32Array(RESOLUTION * RESOLUTION * 4);
     const length = vertices.length;
@@ -534,7 +535,7 @@ function createPositionTexture () {
 
 }
 
-function createConstraintsTexture (k) {
+function createConstraintsTexture(k) {
 
     const data = new Uint8Array(RESOLUTION * RESOLUTION * 4);
     const length = vertices.length;
@@ -568,7 +569,7 @@ function createConstraintsTexture (k) {
 
 }
 
-function createFacesTexture (k) {
+function createFacesTexture(k) {
 
     const data = new Uint8Array(RESOLUTION * RESOLUTION * 4);
     const length = vertices.length;
@@ -602,11 +603,14 @@ function createFacesTexture (k) {
 
 }
 
-function integrate () {
+function integrate() {
+
+    let dt = clock.getDelta();
+    dt = (dt > 0.016) ? 0.016 : dt;
 
     mesh.material = integrateShader;
     integrateShader.uniforms.tSize.value = tSize;
-    integrateShader.uniforms.dt.value = 0.016;
+    integrateShader.uniforms.dt.value = dt;
     integrateShader.uniforms.tOriginal.value = originalRT.texture;
     integrateShader.uniforms.tPrevious.value = previousRT.texture;
     integrateShader.uniforms.tPosition.value = positionRT.texture;
@@ -621,7 +625,7 @@ function integrate () {
 
 }
 
-function solveConstraints (offset) {
+function solveConstraints(offset) {
 
     const tID = ~~(offset / 2);
     const cID = offset % 2;
@@ -643,7 +647,7 @@ function solveConstraints (offset) {
 
 }
 
-function mouseOffset () {
+function mouseOffset() {
 
     mesh.material = mouseShader;
     mouseShader.uniforms.tSize.value = tSize;
@@ -661,7 +665,7 @@ function mouseOffset () {
 
 }
 
-function computeVertexNormals (id) {
+function computeVertexNormals(id) {
 
     mesh.material = normalsShader;
     normalsShader.uniforms.reset.value = (id == 0) ? 1.0 : 0.0;
@@ -679,7 +683,7 @@ function computeVertexNormals (id) {
     ntargetRT = tmp;
 }
 
-function update () {
+function update() {
 
     integrate();
 
@@ -701,155 +705,11 @@ function update () {
     }
 }
 
-var physical_frag = /* glsl */`
-// https://github.com/google/filament/blob/master/shaders/src/brdf.fs#L94
-float D_Charlie(float roughness, float NoH) {
-	// Estevez and Kulla 2017, "Production Friendly Microfacet Squish BRDF"
-	float invAlpha  = 1.0 / roughness;
-	float cos2h = NoH * NoH;
-	float sin2h = max(1.0 - cos2h, 0.0078125); // 2^(-14/2), so sin2h^2 > 0 in fp16
-	return (2.0 + invAlpha) * pow(sin2h, invAlpha * 0.5) / (2.0 * PI);
-}
-// https://github.com/google/filament/blob/master/shaders/src/brdf.fs#L136
-float V_Neubelt(float NoV, float NoL) {
-	// Neubelt and Pettineo 2013, "Crafting a Next-gen Material Pipeline for The Order: 1886"
-	return saturate(1.0 / (4.0 * (NoL + NoV - NoL * NoV)));
-}
-float BDRF_Diffuse_Squish( const in float sheen, const in IncidentLight incidentLight, const in GeometricContext geometry ) {
-	vec3 N = geometry.normal;
-	vec3 V = geometry.viewDir;
-	vec3 L = incidentLight.direction;
-	vec3 H = normalize( V + L );
-	float dotNH = saturate( dot( N, H ) );
-	float thetaH = acos( dotNH );
-	return D_Charlie( sheen, dot(N, H) ) * V_Neubelt( dot(N, V), dot(N, L) );
-}
-struct PhysicalMaterial {
-	vec3	diffuseColor;
-	float	specularRoughness;
-	vec3	specularColor;
-	#ifndef STANDARD
-		float clearCoat;
-		float clearCoatRoughness;
-		float sheen;
-	#endif
-};
-#define MAXIMUM_SPECULAR_COEFFICIENT 0.16
-#define DEFAULT_SPECULAR_COEFFICIENT 0.04
-// Clear coat directional hemishperical reflectance (this approximation should be improved)
-float clearCoatDHRApprox( const in float roughness, const in float dotNL ) {
-	return DEFAULT_SPECULAR_COEFFICIENT + ( 1.0 - DEFAULT_SPECULAR_COEFFICIENT ) * ( pow( 1.0 - dotNL, 5.0 ) * pow( 1.0 - roughness, 2.0 ) );
-}
-#if NUM_RECT_AREA_LIGHTS > 0
-	void RE_Direct_RectArea_Physical( const in RectAreaLight rectAreaLight, const in GeometricContext geometry, const in PhysicalMaterial material, inout ReflectedLight reflectedLight ) {
-		vec3 normal = geometry.normal;
-		vec3 viewDir = geometry.viewDir;
-		vec3 position = geometry.position;
-		vec3 lightPos = rectAreaLight.position;
-		vec3 halfWidth = rectAreaLight.halfWidth;
-		vec3 halfHeight = rectAreaLight.halfHeight;
-		vec3 lightColor = rectAreaLight.color;
-		float roughness = material.specularRoughness;
-		vec3 rectCoords[ 4 ];
-		rectCoords[ 0 ] = lightPos + halfWidth - halfHeight; // counterclockwise; light shines in local neg z direction
-		rectCoords[ 1 ] = lightPos - halfWidth - halfHeight;
-		rectCoords[ 2 ] = lightPos - halfWidth + halfHeight;
-		rectCoords[ 3 ] = lightPos + halfWidth + halfHeight;
-		vec2 uv = LTC_Uv( normal, viewDir, roughness );
-		vec4 t1 = texture2D( ltc_1, uv );
-		vec4 t2 = texture2D( ltc_2, uv );
-		mat3 mInv = mat3(
-			vec3( t1.x, 0, t1.y ),
-			vec3(    0, 1,    0 ),
-			vec3( t1.z, 0, t1.w )
-		);
-		// LTC Fresnel Approximation by Stephen Hill
-		// http://blog.selfshadow.com/publications/s2016-advances/s2016_ltc_fresnel.pdf
-		vec3 fresnel = ( material.specularColor * t2.x + ( vec3( 1.0 ) - material.specularColor ) * t2.y );
-		reflectedLight.directSpecular += lightColor * fresnel * LTC_Evaluate( normal, viewDir, position, mInv, rectCoords );
-		reflectedLight.directDiffuse += lightColor * material.diffuseColor * LTC_Evaluate( normal, viewDir, position, mat3( 1.0 ), rectCoords );
-	}
-#endif
-void RE_Direct_Physical( const in IncidentLight directLight, const in GeometricContext geometry, const in PhysicalMaterial material, inout ReflectedLight reflectedLight ) {
-	float dotNL = saturate( dot( geometry.normal, directLight.direction ) );
-	vec3 irradiance = dotNL * directLight.color;
-	#ifndef PHYSICALLY_CORRECT_LIGHTS
-		irradiance *= PI; // punctual light
-	#endif
-	#ifndef STANDARD
-		float clearCoatDHR = material.clearCoat * clearCoatDHRApprox( material.clearCoatRoughness, dotNL );
-	#else
-		float clearCoatDHR = 0.0;
-	#endif
-	reflectedLight.directSpecular += ( 1.0 - clearCoatDHR ) * irradiance * BRDF_Specular_GGX( directLight, geometry, material.specularColor, material.specularRoughness );
-	float sheenMix;
-	#ifndef STANDARD
-		float sheenFactor = 0.7;
-		if(sheenFactor == 0.) sheenMix = 0.;
-		else sheenMix = 1. - pow(1. - sheenFactor, 5.);
-	#else
-		sheenMix = 0.;
-	#endif
-	reflectedLight.directDiffuse += ( 1.0 - clearCoatDHR ) * irradiance * BRDF_Diffuse_Lambert( material.diffuseColor ) * (1. - sheenMix);
-	#ifndef STANDARD
-		// avoid expensive calculation
-		if(sheenMix > 0.) reflectedLight.directDiffuse += ( 1.0 - clearCoatDHR ) * material.diffuseColor * irradiance * sheenMix * BDRF_Diffuse_Squish( sheenFactor, directLight, geometry );
-	#endif
-	#ifndef STANDARD
-		reflectedLight.directSpecular += irradiance * material.clearCoat * BRDF_Specular_GGX( directLight, geometry, vec3( DEFAULT_SPECULAR_COEFFICIENT ), material.clearCoatRoughness );
-	#endif
-}
-void RE_IndirectDiffuse_Physical( const in vec3 irradiance, const in GeometricContext geometry, const in PhysicalMaterial material, inout ReflectedLight reflectedLight ) {
-	// Defer to the IndirectSpecular function to compute
-	// the indirectDiffuse if energy preservation is enabled.
-	#ifndef ENVMAP_TYPE_CUBE_UV
-		reflectedLight.indirectDiffuse += irradiance * BRDF_Diffuse_Lambert( material.diffuseColor );
-	#endif
-}
-void RE_IndirectSpecular_Physical( const in vec3 radiance, const in vec3 irradiance, const in vec3 clearCoatRadiance, const in GeometricContext geometry, const in PhysicalMaterial material, inout ReflectedLight reflectedLight) {
-	#ifndef STANDARD
-		float dotNV = saturate( dot( geometry.normal, geometry.viewDir ) );
-		float dotNL = dotNV;
-		float clearCoatDHR = material.clearCoat * clearCoatDHRApprox( material.clearCoatRoughness, dotNL );
-	#else
-		float clearCoatDHR = 0.0;
-	#endif
-	float clearCoatInv = 1.0 - clearCoatDHR;
-	// Both indirect specular and diffuse light accumulate here
-	// if energy preservation enabled, and PMREM provided.
-	#if defined( ENVMAP_TYPE_CUBE_UV )
-		vec3 singleScattering = vec3( 0.0 );
-		vec3 multiScattering = vec3( 0.0 );
-		vec3 cosineWeightedIrradiance = irradiance * RECIPROCAL_PI;
-		BRDF_Specular_Multiscattering_Environment( geometry, material.specularColor, material.specularRoughness, singleScattering, multiScattering );
-		vec3 diffuse = material.diffuseColor * ( 1.0 - ( singleScattering + multiScattering ) );
-		reflectedLight.indirectSpecular += clearCoatInv * radiance * singleScattering;
-		reflectedLight.indirectDiffuse += multiScattering * cosineWeightedIrradiance;
-		reflectedLight.indirectDiffuse += diffuse * cosineWeightedIrradiance;
-	#else
-		reflectedLight.indirectSpecular += clearCoatInv * radiance * BRDF_Specular_GGX_Environment( geometry, material.specularColor, material.specularRoughness );
-	#endif
-	#ifndef STANDARD
-		reflectedLight.indirectSpecular += clearCoatRadiance * material.clearCoat * BRDF_Specular_GGX_Environment( geometry, vec3( DEFAULT_SPECULAR_COEFFICIENT ), material.clearCoatRoughness );
-	#endif
-}
-#define RE_Direct				RE_Direct_Physical
-#define RE_Direct_RectArea		RE_Direct_RectArea_Physical
-#define RE_IndirectDiffuse		RE_IndirectDiffuse_Physical
-#define RE_IndirectSpecular		RE_IndirectSpecular_Physical
-#define Material_BlinnShininessExponent( material )   GGXRoughnessToBlinnExponent( material.specularRoughness )
-#define Material_ClearCoat_BlinnShininessExponent( material )   GGXRoughnessToBlinnExponent( material.clearCoatRoughness )
-// ref: https://seblagarde.files.wordpress.com/2015/07/course_notes_moving_frostbite_to_pbr_v32.pdf
-float computeSpecularOcclusion( const in float dotNV, const in float ambientOcclusion, const in float roughness ) {
-	return saturate( pow( dotNV + ambientOcclusion, exp2( - 16.0 * roughness - 1.0 ) ) - 1.0 + ambientOcclusion );
-}
-`;
-
 let
     RESOLUTION$1,
     mesh$1;
 
-function init$3 (scene) {
+function init$3(scene) {
 
     RESOLUTION$1 = Math.ceil(Math.sqrt(vertices.length));
 
@@ -862,10 +722,11 @@ function init$3 (scene) {
         color: 0xffda20,
         bumpMap: bmp,
         bumpScale: 0.25,
-        metalness: 0.1,
-        roughness: 0.6,
-        clearcoat: 0.8,
-        clearcoatRoughness: 0.35,
+        metalness: 0,
+        roughness: 0.9,
+        // clearcoat: 0.8,
+        // clearcoatRoughness: 0.35,
+        sheen: new THREE.Color(0, 0, 1),
         dithering: true
 
     });
@@ -883,10 +744,6 @@ function init$3 (scene) {
         shader.vertexShader = shader.vertexShader.replace(
             '#include <begin_vertex>',
             ''
-        );
-        shader.fragmentShader = shader.fragmentShader.replace(
-            '#include <lights_physical_pars_fragment>',
-            physical_frag
         );
     };
 
@@ -926,52 +783,7 @@ let
     objects;
 
 const
-    clock = new THREE.Clock();
-
-function init$4 (scene) {
-
-    // lights
-    const ambientLight = new THREE.AmbientLight( 0xffffff, 0 );
-    ambientLight.baseIntensity = 1.0;
-
-    const spotLight = new THREE.SpotLight(0xfd8b8b, 0, 4000, Math.PI / 6, 0.2, 0.11);
-    spotLight.baseIntensity = 3.6;
-    spotLight.position.set(0.9, 0.1, -0.5).multiplyScalar(400);
-    spotLight.castShadow = true;
-    spotLight.shadow.radius = 20;
-    spotLight.shadow.camera.far = 4000;
-    spotLight.shadow.mapSize.height = 4096;
-    spotLight.shadow.mapSize.width = 4096;
-
-    const spotLight2 = new THREE.SpotLight(0x4a7fe8, 0, 4000, Math.PI / 6, 0.2, 0.11);
-    spotLight2.baseIntensity = 2.6;
-    spotLight2.position.set(-0.91, 0.1, -0.5).multiplyScalar(400);
-    spotLight2.castShadow = true;
-    spotLight2.shadow.radius = 20;
-    spotLight2.shadow.camera.far = 4000;
-    spotLight2.shadow.mapSize.height = 4096;
-    spotLight2.shadow.mapSize.width = 4096;
-
-    const spotLight3 = new THREE.SpotLight(0xffffff, 0, 4000, Math.PI / 5.5, 1.4, 0.08);
-    spotLight3.baseIntensity = 1.8;
-    spotLight3.position.set(0, 0, -1).multiplyScalar(400);
-    spotLight3.castShadow = true;
-    spotLight3.shadow.radius = 5;
-    spotLight3.shadow.camera.far = 4000;
-    spotLight3.shadow.mapSize.height = 4096;
-    spotLight3.shadow.mapSize.width = 4096;
-
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0);
-    directionalLight.baseIntensity = 0.3;
-    directionalLight.position.set( 0, 1, +0.5 );
-    const directionalLight2 = new THREE.DirectionalLight( 0xffffff, 0 );
-    directionalLight2.baseIntensity = 1.3;
-    directionalLight2.position.set( 0, 1, -0.4 );
-
-    scene.add( ambientLight, spotLight, spotLight2, spotLight3, directionalLight, directionalLight2 );
-    objects = [ ambientLight, spotLight, spotLight2, spotLight3, directionalLight, directionalLight2 ];
-
-}
+    clock$1 = new THREE.Clock();
 
 function update$1 () {
 
@@ -980,7 +792,7 @@ function update$1 () {
         return c / 2 * ((t -= 2) * t * t + 2);
     }
 
-    const time = clock.getElapsedTime();
+    const time = clock$1.getElapsedTime();
 
     if (time > 1 && time < 4) {
 
@@ -997,7 +809,7 @@ function update$1 () {
 let
     renderer$1, camera$2, scene$1;
 
-function init$5 () {
+function init$4() {
 
     // renderer
     renderer$1 = new THREE.WebGLRenderer({ antialias: true });
@@ -1026,9 +838,8 @@ function init$5 () {
     // pre-calculate geometry information
     calculate();
 
-    // initialization block;
+    // initialization block
     init(scene$1);
-    init$4(scene$1);
     init$3(scene$1);
 
     init$1(camera$2, renderer$1.domElement);
@@ -1041,7 +852,7 @@ function init$5 () {
     animate();
 }
 
-function animate () {
+function animate() {
 
     requestAnimationFrame(animate);
 
@@ -1063,4 +874,4 @@ window.onresize = function () {
     renderer$1.setSize(w, h);
 };
 
-init$5();
+init$4();
