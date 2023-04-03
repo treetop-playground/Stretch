@@ -13,7 +13,7 @@ const
     plane = new THREE.Plane(undefined, -180),
     sphere = new THREE.Sphere(undefined, 100);
 
-function init (PerspectiveCamera) {
+function init(PerspectiveCamera) {
 
     camera = PerspectiveCamera;
 
@@ -22,9 +22,9 @@ function init (PerspectiveCamera) {
     window.addEventListener('mouseup', onMouseUp);
 }
 
-function updating () {
+function updating() {
 
-    if (!interacting) return;
+    if (!interacting) return false;
 
     raycaster.setFromCamera(mouse, camera);
 
@@ -53,18 +53,18 @@ function updating () {
     return (interacting && psel) ? true : false;
 }
 
-function onMouseMove (evt) {
+function onMouseMove(evt) {
     mouse.x = (evt.pageX / window.innerWidth) * 2 - 1;
     mouse.y = -(evt.pageY / window.innerHeight) * 2 + 1;
 };
 
-function onMouseDown (evt) {
+function onMouseDown(evt) {
     if (evt.button == 0) {
         interacting = true;
     }
 };
 
-function onMouseUp (evt) {
+function onMouseUp(evt) {
     if (evt.button == 0) {
         interacting = false;
         psel = undefined;
