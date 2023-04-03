@@ -20,10 +20,7 @@ function init (scene) {
 }
 
 let
-    geometry,
-    faces, colors,
-    vertices = new Array(),
-    constraints = new Array();
+    geometry, adjacency, vertices;
 
 function calculate() {
 
@@ -34,14 +31,7 @@ function calculate() {
 
     populateVertices();
 
-    faces = Array.from({ length: vertices.length }, () => new Array());
-
-    // I know 8 is sufficient in this case, but it might not be if you are re-utilizing this code.
-    colors = Array.from({ length: vertices.length }, () => new Array(8).fill());
-
-    populateConstraints();
-
-    populateColors();
+    populateAdjacency();
 }
 
 function populateVertices() {
@@ -49,87 +39,46 @@ function populateVertices() {
     const v0 = new THREE.Vector3();
     const position = geometry.attributes.position;
 
+    vertices = new Array();
+
     for (let i = 0, il = position.count; i < il; i++) {
         v0.fromBufferAttribute(position, i);
         vertices.push(v0.clone());
     }
 }
 
-function populateConstraints() {
+function populateAdjacency() {
 
-    const index = geometry.index;
-    const adjacency = Array.from({ length: vertices.length }, () => new Array());
+    const
+        index = geometry.index,
+        faces = Array.from({ length: vertices.length }, () => new Array());
 
+    // compute all faces for set vertex
     for (let i = 0, il = index.count / 3; i < il; i++) {
 
-        const i3 = i * 3;
+        const
+            i3 = i * 3,
+            a = index.getX(i3 + 0),
+            b = index.getX(i3 + 1),
+            c = index.getX(i3 + 2),
 
-        const a = index.getX(i3 + 0);
-        const b = index.getX(i3 + 1);
-        const c = index.getX(i3 + 2);
+            face = new THREE.Face3(a, b, c);
 
-        faces[a].push([b, c]);
-        faces[b].push([c, a]);
-        faces[c].push([a, b]);
-
-        if (!adjacency[b].includes(a)) {
-
-            adjacency[a].push(b);
-            adjacency[b].push(a);
-            constraints.push([a, b]);
-
-        }
-
-        if (!adjacency[c].includes(a)) {
-
-            adjacency[a].push(c);
-            adjacency[c].push(a);
-            constraints.push([a, c]);
-        }
-
-        if (!adjacency[c].includes(b)) {
-
-            adjacency[b].push(c);
-            adjacency[c].push(b);
-            constraints.push([b, c]);
-        }
-    }
-}
-
-function populateColors() {
-
-    // naive edge-coloring implementation, should be optimized.
-    // works decently well for this case, but definitely the bottleneck of this method.
-    // improving this is well worth it.
-    for (let i = 0, il = constraints.length; i < il; i++) {
-
-        const con = constraints[i];
-
-        let k = 0;
-        while (true) {
-
-            while (colors[con[0]][k] !== undefined) k++;
-
-            if (colors[con[1]][k] === undefined) {
-                colors[con[0]][k] = con[1];
-                colors[con[1]][k] = con[0];
-                break;
-            } else {
-                k++;
-            }
-        }
+        faces[a].push(face);
+        faces[b].push(face);
+        faces[c].push(face);
     }
 }
 
 function dispose() {
 
-    faces = undefined;
-    colors = undefined;
-    constraints = undefined;
+    geometry = undefined;
+    adjacency = undefined;
 }
 
-let 
-    camera, interacting = false,
+let
+    camera,
+    interacting = false,
     psel = undefined;
 
 const
@@ -206,55 +155,81 @@ void main() {
 
 var constraints_frag = /* glsl */`
 precision highp float;
-uniform int cID;
-uniform float length;
+
 uniform vec2 tSize;
 uniform sampler2D tPosition;
-uniform sampler2D tOriginal;
-uniform sampler2D tConstraints;
-vec2 getUV( float id ) {
-	float div = id / tSize.x;
-	float d = floor( div );
-	float y = d / tSize.x;
-	float x = div - d;
-	float off = 0.5 / tSize.x;
-	return vec2( x + off, y + off );
-}
-void main() {
-	vec2 uv = gl_FragCoord.xy / tSize.xy;
-	vec3 orgA = texture2D( tOriginal, uv ).xyz;
-	vec3 posA = texture2D( tPosition, uv ).xyz;
-	
-	float idx;
-	
-	vec2 idxColor = ( cID == 0 ) ? texture2D( tConstraints, uv ).xy : texture2D( tConstraints, uv ).zw;
-		
-	idx = idxColor.r * 255.0 + idxColor.g * 255.0 * 256.0;
-    uv = getUV( idx );
 
-	vec3 orgB = texture2D( tOriginal, uv ).xyz;
-	vec3 posB = texture2D( tPosition, uv ).xyz;
-	vec3 offOrg = ( orgB - orgA );
-	vec3 offCur = ( posB - posA );
-	float restDist = dot( offOrg, offOrg );
-	float curDist = dot( offCur, offCur );
-	float diff = restDist / ( curDist + restDist ) - 0.5;
-	if ( diff > 0.0 ) diff *= 0.25;
-    if ( idx > length ) diff = 0.0;
-	posA -= offCur * diff * 0.52;
-	gl_FragColor = vec4( posA, 1.0 );
+uniform sampler2D tDistancesA;
+uniform sampler2D tDistancesB;
+
+uniform sampler2D tAdjacentsA;
+uniform sampler2D tAdjacentsB;
+
+// get vec2 tex coordinate from index
+vec2 getUV( float id ) { 
+	vec2 coords = vec2(
+		floor( mod( ( id + 0.5 ), tSize.x ) ),
+		floor( ( id + 0.5 ) / tSize.x )
+	) + 0.5;
+	return coords / tSize;
+}
+
+// compute offset based on current distance and spring rest distance
+vec3 getDisplacement( vec3 point0, vec3 point1, float restDistance ) {
+	
+    float curDistance = distance( point0, point1 );
+	return 1.5 * ( curDistance - restDistance ) * ( point1 - point0 ) / curDistance;
+}
+
+void main() {
+	
+	vec3 displacement;
+	vec2 uv = gl_FragCoord.xy / tSize.xy;
+
+	// indices of adjacent vertices
+	vec4 adjacentA = texture2D( tAdjacentsA, uv );
+	vec4 adjacentB = texture2D( tAdjacentsB, uv );
+	
+	// distances of adjacent vertices
+	vec4 distancesA = texture2D( tDistancesA, uv );
+	vec4 distancesB = texture2D( tDistancesB, uv );
+	
+	// vertex position
+	vec3 p0 = texture2D( tPosition, uv ).xyz;
+	
+	// adjacent vertices positions
+    vec3 p1 = texture2D( tPosition, getUV( adjacentA.x ) ).xyz;
+    vec3 p2 = texture2D( tPosition, getUV( adjacentA.y ) ).xyz;
+    vec3 p3 = texture2D( tPosition, getUV( adjacentA.z ) ).xyz;
+    vec3 p4 = texture2D( tPosition, getUV( adjacentA.w ) ).xyz;
+    vec3 p5 = texture2D( tPosition, getUV( adjacentB.x ) ).xyz;
+	vec3 p6 = texture2D( tPosition, getUV( adjacentB.y ) ).xyz;
+	
+	// spring-based displacement
+    displacement += getDisplacement( p0, p1, distancesA.x );
+    displacement += getDisplacement( p0, p2, distancesA.y );
+    displacement += getDisplacement( p0, p3, distancesA.z );
+    displacement += getDisplacement( p0, p4, distancesA.w );
+    displacement += getDisplacement( p0, p5, distancesB.x );
+    displacement += ( adjacentB.y > 0.0 ) ? getDisplacement( p0, p6, distancesB.y ) : vec3( 0 );
+	
+	p0 += 0.93 * displacement / ( ( adjacentB.y > 0.0 ) ? 6.0 : 5.0 );
+	
+	gl_FragColor = vec4( p0, 1.0 );
 }
 `;
 
 var integrate_frag = /* glsl */`
 precision highp float;
 
-uniform float dt;
 uniform vec2 tSize;
 
 uniform sampler2D tOriginal;
 uniform sampler2D tPrevious;
 uniform sampler2D tPosition;
+
+#define dt 0.016
+
 void main() {
 
     float dt2 = dt * dt;
@@ -271,35 +246,36 @@ void main() {
 
 var mouse_frag = /* glsl */`
 precision highp float;
+
 uniform float psel;
 uniform vec2 tSize;
 uniform vec3 mouse;
 uniform sampler2D tPosition;
 uniform sampler2D tOriginal;
-vec2 getUV( float id ) {
-	float div = id / tSize.x;
-	float d = floor( div );
-	float y = d / tSize.x;
-	float x = div - d;
-	float off = 0.5 / tSize.x;
-	return vec2( x + off, y + off );
+
+// get vec2 tex coordinate from index
+vec2 getUV( float id ) { 
+
+	vec2 coords = vec2(
+		floor( mod( ( id + 0.5 ), tSize.x ) ),
+		floor( ( id + 0.5 ) / tSize.x )
+	) + 0.5;
+
+	return coords / tSize;
 }
+
 void main() {
-
-    vec3 diff, proj;
-
 	vec2 uv = gl_FragCoord.xy / tSize.xy;
+	
 	vec3 pos = texture2D( tPosition, uv ).xyz;
 	vec3 org = texture2D( tOriginal, uv ).xyz;
-    uv = getUV( psel );
-	vec3 ref = texture2D( tOriginal, uv ).xyz;
-	vec3 offset = mouse - ref;
-	if ( distance( org, ref ) <= 10.0 )  {
+	vec3 ref = texture2D( tOriginal, getUV( psel ) ).xyz;
 	
-	    diff = ref - org;
-	    
-	    proj = dot(diff, offset) / dot(offset, offset) * org;
-	    
+	vec3 diff, proj, offset = mouse - ref;
+
+	if ( distance( org, ref ) <= 10.0 )  {
+		diff = ref - org;
+		proj = dot( diff, offset ) / dot( offset, offset ) * org;
 		pos = org + proj + offset;
 	}
 	gl_FragColor = vec4( pos, 1.0 );
@@ -308,38 +284,58 @@ void main() {
 
 var normals_frag = /* glsl */`
 precision highp float;
-uniform int reset;
-uniform float length;
+
 uniform vec2 tSize;
+
 uniform sampler2D tPosition;
-uniform sampler2D tNormal;
-uniform sampler2D tFace;
-vec2 getUV( float id ) {
-	float div = id / tSize.x;
-	float d = floor( div );
-	float y = d / tSize.x;
-	float x = div - d;
-	float off = 0.5 / tSize.x;
-	return vec2( x + off, y + off );
+
+uniform sampler2D tAdjacentsA;
+uniform sampler2D tAdjacentsB;
+
+// get vec2 tex coordinate from index
+vec2 getUV( float id ) { 
+
+	vec2 coords = vec2(
+		floor( mod( ( id + 0.5 ), tSize.x ) ),
+		floor( ( id + 0.5 ) / tSize.x )
+	) + 0.5;
+	return coords / tSize;
 }
-void main() {
+
+void main () {
+
+	vec3 normal;
 	vec2 uv = gl_FragCoord.xy / tSize.xy;
-	vec3 a = texture2D( tPosition, uv ).xyz;
-	vec2 uvB, uvC;
-	vec3 fNormal, b, c;
-	vec3 normal = ( reset == 1 ) ? vec3( 0.0 ) : texture2D( tNormal, uv ).xyz;
-	float idx;
-	vec2 bColor = texture2D( tFace, uv ).xy;
-	idx = bColor.r * 255.0 + bColor.g * 255.0 * 256.0;
-	uvB = getUV( idx );
-	vec2 cColor = texture2D( tFace, uv ).zw;
-	idx = cColor.r * 255.0 + cColor.g * 255.0 * 256.0;
-	uvC = getUV( idx );
-	b = texture2D( tPosition, uvB ).xyz;
-	c = texture2D( tPosition, uvC ).xyz;
-	fNormal = cross( ( c - b ), ( a - b ) );
-	if ( idx <= length ) normal += fNormal;
-	gl_FragColor = vec4( normal, 1.0 );
+
+	// indices of adjacent vertices
+    vec4 adjacentsA = texture2D( tAdjacentsA, uv );
+    vec4 adjacentsB = texture2D( tAdjacentsB, uv );
+
+	// vertex position
+    vec3 p0 = texture2D( tPosition, uv ).xyz;
+
+	// adjacent vertices positions
+    vec3 p1 = texture2D( tPosition, getUV( adjacentsA.x ) ).xyz;
+    vec3 p2 = texture2D( tPosition, getUV( adjacentsA.y ) ).xyz;
+    vec3 p3 = texture2D( tPosition, getUV( adjacentsA.z ) ).xyz;
+    vec3 p4 = texture2D( tPosition, getUV( adjacentsA.w ) ).xyz;
+    vec3 p5 = texture2D( tPosition, getUV( adjacentsB.x ) ).xyz;
+    vec3 p6 = texture2D( tPosition, getUV( adjacentsB.y ) ).xyz;
+	
+    // compute vertex normal contribution
+    normal += cross( p1 - p0, p2 - p0 );
+    normal += cross( p2 - p0, p3 - p0 );
+    normal += cross( p3 - p0, p4 - p0 );
+    normal += cross( p4 - p0, p5 - p0 );
+    
+	if ( adjacentsB.y > 0.0 ) {
+        normal += cross( p5 - p0, p6 - p0 );
+        normal += cross( p6 - p0, p1 - p0 );
+    } else {
+        normal += cross( p5 - p0, p1 - p0 );
+    }
+	
+    gl_FragColor = vec4( normalize( normal ), 1.0 );
 }
 `;
 
@@ -395,38 +391,36 @@ mouseShader.uniforms = {
 const constraintsShader = copyShader.clone();
 constraintsShader.fragmentShader = constraints_frag;
 constraintsShader.uniforms = {
-    cID: { value: null },
-    length: { value: null },
     tSize: { type: 'v2' },
-    tOriginal: { type: 't' },
     tPosition: { type: 't' },
-    tConstraints: { type: 't' }
+    tAdjacentsA: { type: 't' },
+    tAdjacentsB: { type: 't' },
+    tDistancesA: { type: 't' },
+    tDistancesB: { type: 't' }
 };
 
 // calculate normals
 const normalsShader = copyShader.clone();
 normalsShader.fragmentShader = normals_frag;
 normalsShader.uniforms = {
-    reset: { value: null },
-    length: { value: null },
     tSize: { type: 'v2' },
     tPosition: { type: 't' },
-    tNormal: { type: 't' },
-    tFace: { type: 't' },
+    tAdjacentsA: { type: 't' },
+    tAdjacentsB: { type: 't' }
 };
 
 let
     RESOLUTION,
-    renderer, mesh, targetRT, ntargetRT, normalsRT,
+    renderer, mesh, targetRT, normalsRT,
     originalRT, previousRT, positionRT,
-    constraintsRT, facesRT,
-    steps = 50;
+    adjacentsRT, distancesRT,
+    steps = 40;
+
 
 const
     tSize = new THREE.Vector2(),
     scene = new THREE.Scene(),
-    camera$1 = new THREE.Camera(),
-    clock = new THREE.Clock();
+    camera$1 = new THREE.Camera();
 
 function init$2(WebGLRenderer) {
 
@@ -456,16 +450,12 @@ function init$2(WebGLRenderer) {
     // render targets
     originalRT = createRenderTarget();
     targetRT = createRenderTarget();
-    ntargetRT = createRenderTarget();
     previousRT = createRenderTarget();
     positionRT = createRenderTarget();
     normalsRT = createRenderTarget();
 
-
-    // this is dependant on the edge-coloring algorithm, need to experiment with what works for other models.
-    constraintsRT = Array.from({ length: 4 }, createURenderTarget);
-    // same
-    facesRT = Array.from({ length: 6 }, createURenderTarget);
+    adjacentsRT = Array.from({ length: 2 }, createRenderTarget);
+    distancesRT = Array.from({ length: 2 }, createRenderTarget);
 
     // prepare
     copyTexture(createPositionTexture(), originalRT);
@@ -473,13 +463,17 @@ function init$2(WebGLRenderer) {
     copyTexture(originalRT, positionRT);
 
     // setup relaxed vertices conditions
-    for (let i = 0; i < 4; i++) {
-        copyTexture(createConstraintsTexture(i * 2), constraintsRT[i]);
+    for (let i = 0; i < 2; i++) {
+
+        copyTexture(createAdjacentsTexture(i * 4), adjacentsRT[i]);
+
     }
 
-    // compute faces information for normals
-    for (let i = 0; i < 6; i++) {
-        copyTexture(createFacesTexture(i), facesRT[i]);
+    // setup vertices original distances
+    for (let i = 0; i < 2; i++) {
+
+        copyTexture(createDistancesTexture(i * 4), distancesRT[i]);
+
     }
 
 }
@@ -495,13 +489,7 @@ function copyTexture(input, output) {
 
 }
 
-function createURenderTarget() {
-
-    return createRenderTarget(true);
-
-}
-
-function createRenderTarget(unsigned) {
+function createRenderTarget() {
 
     return new THREE.WebGLRenderTarget(RESOLUTION, RESOLUTION, {
         wrapS: THREE.ClampToEdgeWrapping,
@@ -509,7 +497,7 @@ function createRenderTarget(unsigned) {
         minFilter: THREE.NearestFilter,
         magFilter: THREE.NearestFilter,
         format: THREE.RGBAFormat,
-        type: (unsigned) ? THREE.UnsignedByteType : THREE.FloatType,
+        type: THREE.FloatType,
         depthTest: false,
         depthWrite: false,
         depthBuffer: false,
@@ -527,9 +515,10 @@ function createPositionTexture() {
 
         const i4 = i * 4;
 
-        data[i4] = vertices[i].x;
+        data[i4 + 0] = vertices[i].x;
         data[i4 + 1] = vertices[i].y;
         data[i4 + 2] = vertices[i].z;
+
     }
 
     const tmp = {};
@@ -544,30 +533,26 @@ function createPositionTexture() {
 
 }
 
-function createConstraintsTexture(k) {
+function createAdjacentsTexture(k) {
 
-    const data = new Uint8Array(RESOLUTION * RESOLUTION * 4);
+    const data = new Float32Array(RESOLUTION * RESOLUTION * 4);
     const length = vertices.length;
 
     for (let i = 0; i < length; i++) {
 
         const i4 = i * 4;
+        const adj = adjacency[i];
+        const len = adjacency[i].length;
 
-        for (let j = 0; j < 2; j++) {
-
-            let idx = colors[i][k + j];
-
-            if (idx == undefined) idx = (length + 1);
-
-            data[i4 + j * 2 + 0] = idx % 256;
-            data[i4 + j * 2 + 1] = ~~(idx / 256);
-
-        }
+        data[i4 + 0] = adj[k + 0];
+        data[i4 + 1] = (len < 6 && k > 0) ? - 1 : adj[k + 1];
+        data[i4 + 2] = (k > 0) ? - 1 : adj[k + 2];
+        data[i4 + 3] = (k > 0) ? - 1 : adj[k + 3];
 
     }
 
     const tmp = {};
-    tmp.texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.UnsignedByteType);
+    tmp.texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.FloatType);
     tmp.texture.minFilter = THREE.NearestFilter;
     tmp.texture.magFilter = THREE.NearestFilter;
     tmp.texture.needsUpdate = true;
@@ -578,30 +563,30 @@ function createConstraintsTexture(k) {
 
 }
 
-function createFacesTexture(k) {
+function createDistancesTexture(k) {
 
-    const data = new Uint8Array(RESOLUTION * RESOLUTION * 4);
+    const data = new Float32Array(RESOLUTION * RESOLUTION * 4);
     const length = vertices.length;
+
+    const vert = vertices;
 
     for (let i = 0; i < length; i++) {
 
         const i4 = i * 4;
+        const adj = adjacency[i];
+        const len = adjacency[i].length;
 
-        const face = faces[i][k];
+        const v = vert[i];
 
-        for (let j = 0; j < 2; j++) {
-
-            const idx = (face == undefined) ? (length + 1) : face[j];
-
-            data[i4 + j * 2 + 0] = idx % 256;
-            data[i4 + j * 2 + 1] = ~~(idx / 256);
-
-        }
+        data[i4 + 0] = v.distanceTo(vert[adj[k + 0]]);
+        data[i4 + 1] = (len < 6 && k > 0) ? - 1 : v.distanceTo(vert[adj[k + 1]]);
+        data[i4 + 2] = (k > 0) ? - 1 : v.distanceTo(vert[adj[k + 2]]);
+        data[i4 + 3] = (k > 0) ? - 1 : v.distanceTo(vert[adj[k + 3]]);
 
     }
 
     const tmp = {};
-    tmp.texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.UnsignedByteType);
+    tmp.texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.FloatType);
     tmp.texture.minFilter = THREE.NearestFilter;
     tmp.texture.magFilter = THREE.NearestFilter;
     tmp.texture.needsUpdate = true;
@@ -614,12 +599,8 @@ function createFacesTexture(k) {
 
 function integrate() {
 
-    let dt = clock.getDelta();
-    dt = (dt > 0.016) ? 0.016 : dt;
-
     mesh.material = integrateShader;
     integrateShader.uniforms.tSize.value = tSize;
-    integrateShader.uniforms.dt.value = dt;
     integrateShader.uniforms.tOriginal.value = originalRT.texture;
     integrateShader.uniforms.tPrevious.value = previousRT.texture;
     integrateShader.uniforms.tPosition.value = positionRT.texture;
@@ -634,18 +615,15 @@ function integrate() {
 
 }
 
-function solveConstraints(offset) {
-
-    const tID = ~~(offset / 2);
-    const cID = offset % 2;
+function solveConstraints() {
 
     mesh.material = constraintsShader;
-    constraintsShader.uniforms.length.value = vertices.length;
     constraintsShader.uniforms.tSize.value = tSize;
-    constraintsShader.uniforms.cID.value = cID;
-    constraintsShader.uniforms.tOriginal.value = originalRT.texture;
     constraintsShader.uniforms.tPosition.value = positionRT.texture;
-    constraintsShader.uniforms.tConstraints.value = constraintsRT[tID].texture;
+    constraintsShader.uniforms.tAdjacentsA.value = adjacentsRT[0].texture;
+    constraintsShader.uniforms.tAdjacentsB.value = adjacentsRT[1].texture;
+    constraintsShader.uniforms.tDistancesA.value = distancesRT[0].texture;
+    constraintsShader.uniforms.tDistancesB.value = distancesRT[1].texture;
 
     renderer.setRenderTarget(targetRT);
     renderer.render(scene, camera$1);
@@ -674,22 +652,17 @@ function mouseOffset() {
 
 }
 
-function computeVertexNormals(id) {
+function computeVertexNormals() {
 
     mesh.material = normalsShader;
-    normalsShader.uniforms.reset.value = (id == 0) ? 1.0 : 0.0;
-    normalsShader.uniforms.length.value = vertices.length;
     normalsShader.uniforms.tSize.value = tSize;
     normalsShader.uniforms.tPosition.value = positionRT.texture;
-    normalsShader.uniforms.tNormal.value = normalsRT.texture;
-    normalsShader.uniforms.tFace.value = facesRT[id].texture;
+    normalsShader.uniforms.tAdjacentsA.value = adjacentsRT[0].texture;
+    normalsShader.uniforms.tAdjacentsB.value = adjacentsRT[1].texture;
 
-    renderer.setRenderTarget(ntargetRT);
+    renderer.setRenderTarget(normalsRT);
     renderer.render(scene, camera$1);
 
-    const tmp = normalsRT;
-    normalsRT = ntargetRT;
-    ntargetRT = tmp;
 }
 
 function update() {
@@ -702,18 +675,12 @@ function update() {
 
         if (mouseUpdating && (i + 5) < steps) mouseOffset();
 
-        for (let j = 0; j < 8; j++) {
-
-            solveConstraints(j);
-
-        }
-    }
-
-    for (let i = 0; i < 6; i++) {
-
-        computeVertexNormals(i);
+        solveConstraints();
 
     }
+
+    computeVertexNormals();
+
 }
 
 let
@@ -724,9 +691,7 @@ function init$3(scene) {
 
     RESOLUTION$1 = Math.ceil(Math.sqrt(vertices.length));
 
-    const tl = new THREE.TextureLoader();
-
-    const bmp = tl.load('./src/textures/bmpMap.png');
+    const bmp = new THREE.TextureLoader().load('./src/textures/bmpMap.png');
 
     const material = new THREE.MeshPhysicalMaterial({
 
@@ -797,7 +762,7 @@ let
     objects;
 
 const
-    clock$1 = new THREE.Clock();
+    clock = new THREE.Clock();
 
 function init$4(scene) {
 
@@ -807,21 +772,11 @@ function init$4(scene) {
 
     const spotLight = new THREE.SpotLight(0xfd8b8b, 0, 4000, Math.PI / 6, 0.2, 0.11);
     spotLight.baseIntensity = 3.6;
-    spotLight.position.set(0.9, 0.1, -0.5).multiplyScalar(400);
-    spotLight.castShadow = true;
-    spotLight.shadow.radius = 20;
-    spotLight.shadow.camera.far = 4000;
-    spotLight.shadow.mapSize.height = 4096;
-    spotLight.shadow.mapSize.width = 4096;
+    spotLight.position.set(0.9, 0.1, - 0.5).multiplyScalar(400);
 
     const spotLight2 = new THREE.SpotLight(0x4a7fe8, 0, 4000, Math.PI / 6, 0.2, 0.11);
     spotLight2.baseIntensity = 2.0;
-    spotLight2.position.set(-0.91, 0.1, -0.5).multiplyScalar(400);
-    spotLight2.castShadow = true;
-    spotLight2.shadow.radius = 20;
-    spotLight2.shadow.camera.far = 4000;
-    spotLight2.shadow.mapSize.height = 4096;
-    spotLight2.shadow.mapSize.width = 4096;
+    spotLight2.position.set(- 0.91, 0.1, - 0.5).multiplyScalar(400);
 
     const spotLight3 = new THREE.SpotLight(0xffffff, 0, 4000, Math.PI / 5.5, 1.4, 0.08);
     spotLight3.baseIntensity = 1.5;
@@ -829,12 +784,12 @@ function init$4(scene) {
     spotLight3.castShadow = true;
     spotLight3.shadow.radius = 5;
     spotLight3.shadow.camera.far = 4000;
-    spotLight3.shadow.mapSize.height = 4096;
-    spotLight3.shadow.mapSize.width = 4096;
+    spotLight3.shadow.mapSize.height = 1024;
+    spotLight3.shadow.mapSize.width = 1024;
 
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0);
     directionalLight.baseIntensity = 0.3;
-    directionalLight.position.set(0, 1, +0.5);
+    directionalLight.position.set(0, 1, 0.5);
     const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0);
     directionalLight2.baseIntensity = 1.3;
     directionalLight2.position.set(0, 1, -0.4);
@@ -844,29 +799,24 @@ function init$4(scene) {
 
 }
 
+function easing(t, c) {
+    if ((t /= 1 / 2) < 1) return c / 2 * t * t * t;
+    return c / 2 * ((t -= 2) * t * t + 2);
+}
+
 function update$1() {
 
-    function easing(t, c) {
-        if ((t /= 1 / 2) < 1) return c / 2 * t * t * t;
-        return c / 2 * ((t -= 2) * t * t + 2);
-    }
-
-    const time = clock$1.getElapsedTime();
+    const time = clock.getElapsedTime();
 
     if (time > 1 && time < 4) {
 
         for (let i = 0; i < objects.length; i++) {
-
             objects[i].intensity = objects[i].baseIntensity * easing((time - 1) / 3, 1.0);
-
         }
-
     }
-
 }
 
-let
-    renderer$1, camera$2, scene$1;
+let renderer$1, camera$2, scene$1;
 
 function init$5() {
 
@@ -888,10 +838,8 @@ function init$5() {
     scene$1.background = new THREE.Color(0x121312);
 
     // camera
-    camera$2 = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 10000);
-    camera$2.position.z = -350;
-    camera$2.position.y = -50;
-    camera$2.position.x = 0;
+    camera$2 = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 4000);
+    camera$2.position.set(0, - 50, - 350);
     camera$2.lookAt(new THREE.Vector3());
 
     // pre-calculate geometry information
@@ -905,7 +853,7 @@ function init$5() {
     init$1(camera$2, renderer$1.domElement);
     init$2(renderer$1);
 
-    // release mem for GC
+    // dispose of calculation data
     dispose();
 
     // start program
@@ -914,13 +862,13 @@ function init$5() {
 
 function animate() {
 
-    requestAnimationFrame(animate);
-
     update$1();
     update();
 
     renderer$1.setRenderTarget(null);
     renderer$1.render(scene$1, camera$2);
+
+    requestAnimationFrame(animate);
 }
 
 window.onresize = function () {

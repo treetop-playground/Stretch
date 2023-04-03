@@ -1,7 +1,7 @@
 import * as PRE from './pre.js';
 
 let
-    camera, object,
+    camera,
     interacting = false,
     psel = undefined;
 
