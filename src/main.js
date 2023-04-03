@@ -8,7 +8,7 @@ import * as MOUSE from './modules/mouse.js';
 let
     renderer, camera, scene;
 
-function init () {
+function init() {
 
     // renderer
     renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -37,9 +37,8 @@ function init () {
     // pre-calculate geometry information
     PRE.calculate();
 
-    // initialization block;
+    // initialization block
     BG.init(scene);
-    LIGHTS.init(scene);
     CLOTH.init(scene);
 
     MOUSE.init(camera, renderer.domElement);
@@ -52,7 +51,7 @@ function init () {
     animate();
 }
 
-function animate () {
+function animate() {
 
     requestAnimationFrame(animate);
 

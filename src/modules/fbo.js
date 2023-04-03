@@ -23,7 +23,7 @@ const
     camera = new THREE.Camera(),
     clock = new THREE.Clock();
 
-function init (WebGLRenderer) {
+function init(WebGLRenderer) {
 
     // setup
     renderer = WebGLRenderer;
@@ -76,7 +76,7 @@ function init (WebGLRenderer) {
 
 }
 
-function copyTexture (input, output) {
+function copyTexture(input, output) {
 
     mesh.material = copyShader;
     copyShader.uniforms.tSize.value = tSize;
@@ -87,13 +87,13 @@ function copyTexture (input, output) {
 
 }
 
-function createURenderTarget () {
+function createURenderTarget() {
 
     return createRenderTarget(true);
 
 }
 
-function createRenderTarget (unsigned) {
+function createRenderTarget(unsigned) {
 
     return new THREE.WebGLRenderTarget(RESOLUTION, RESOLUTION, {
         wrapS: THREE.ClampToEdgeWrapping,
@@ -110,7 +110,7 @@ function createRenderTarget (unsigned) {
 
 }
 
-function createPositionTexture () {
+function createPositionTexture() {
 
     const data = new Float32Array(RESOLUTION * RESOLUTION * 4);
     const length = PRE.vertices.length;
@@ -136,7 +136,7 @@ function createPositionTexture () {
 
 }
 
-function createConstraintsTexture (k) {
+function createConstraintsTexture(k) {
 
     const data = new Uint8Array(RESOLUTION * RESOLUTION * 4);
     const length = PRE.vertices.length;
@@ -170,7 +170,7 @@ function createConstraintsTexture (k) {
 
 }
 
-function createFacesTexture (k) {
+function createFacesTexture(k) {
 
     const data = new Uint8Array(RESOLUTION * RESOLUTION * 4);
     const length = PRE.vertices.length;
@@ -204,10 +204,10 @@ function createFacesTexture (k) {
 
 }
 
-function integrate () {
+function integrate() {
 
     let dt = clock.getDelta();
-    dt = ( dt > 0.016 ) ? 0.016 : dt;
+    dt = (dt > 0.016) ? 0.016 : dt;
 
     mesh.material = integrateShader;
     integrateShader.uniforms.tSize.value = tSize;
@@ -226,7 +226,7 @@ function integrate () {
 
 }
 
-function solveConstraints (offset) {
+function solveConstraints(offset) {
 
     const tID = ~~(offset / 2);
     const cID = offset % 2;
@@ -248,7 +248,7 @@ function solveConstraints (offset) {
 
 }
 
-function mouseOffset () {
+function mouseOffset() {
 
     mesh.material = mouseShader;
     mouseShader.uniforms.tSize.value = tSize;
@@ -266,7 +266,7 @@ function mouseOffset () {
 
 }
 
-function computeVertexNormals (id) {
+function computeVertexNormals(id) {
 
     mesh.material = normalsShader;
     normalsShader.uniforms.reset.value = (id == 0) ? 1.0 : 0.0;
@@ -284,7 +284,7 @@ function computeVertexNormals (id) {
     ntargetRT = tmp;
 }
 
-function update () {
+function update() {
 
     integrate();
 
