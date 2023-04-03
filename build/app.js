@@ -25,14 +25,18 @@ let
     vertices = new Array(),
     constraints = new Array();
 
-function calculate () {
+function calculate() {
 
     const tmp = new THREE.IcosahedronBufferGeometry(100, 5);
+
+    // icosahedron generates non-indexed vertices, we make use of graph adjacency.
     geometry = THREE.BufferGeometryUtils.mergeVertices(tmp, 1.5);
 
     populateVertices();
 
     faces = Array.from({ length: vertices.length }, () => new Array());
+
+    // I know 8 is sufficient in this case, but it might not be if you are re-utilizing this code.
     colors = Array.from({ length: vertices.length }, () => new Array(8).fill());
 
     populateConstraints();
@@ -40,7 +44,7 @@ function calculate () {
     populateColors();
 }
 
-function populateVertices () {
+function populateVertices() {
 
     const v0 = new THREE.Vector3();
     const position = geometry.attributes.position;
@@ -51,7 +55,7 @@ function populateVertices () {
     }
 }
 
-function populateConstraints () {
+function populateConstraints() {
 
     const index = geometry.index;
     const adjacency = Array.from({ length: vertices.length }, () => new Array());
@@ -92,9 +96,11 @@ function populateConstraints () {
     }
 }
 
-function populateColors () {
+function populateColors() {
 
     // naive edge-coloring implementation, should be optimized.
+    // works decently well for this case, but definitely the bottleneck of this method.
+    // improving this is well worth it.
     for (let i = 0, il = constraints.length; i < il; i++) {
 
         const con = constraints[i];
@@ -115,7 +121,7 @@ function populateColors () {
     }
 }
 
-function dispose () {
+function dispose() {
 
     faces = undefined;
     colors = undefined;
@@ -134,7 +140,7 @@ const
     plane = new THREE.Plane(undefined, -180),
     sphere = new THREE.Sphere(undefined, 100);
 
-function init$1 (PerspectiveCamera) {
+function init$1(PerspectiveCamera) {
 
     camera = PerspectiveCamera;
 
@@ -143,9 +149,9 @@ function init$1 (PerspectiveCamera) {
     window.addEventListener('mouseup', onMouseUp);
 }
 
-function updating () {
+function updating() {
 
-    if (!interacting) return;
+    if (!interacting) return false;
 
     raycaster.setFromCamera(mouse, camera);
 
@@ -174,16 +180,16 @@ function updating () {
     return (interacting && psel) ? true : false;
 }
 
-function onMouseMove (evt) {
+function onMouseMove(evt) {
     mouse.x = (evt.pageX / window.innerWidth) * 2 - 1;
     mouse.y = -(evt.pageY / window.innerHeight) * 2 + 1;
 }
-function onMouseDown (evt) {
+function onMouseDown(evt) {
     if (evt.button == 0) {
         interacting = true;
     }
 }
-function onMouseUp (evt) {
+function onMouseUp(evt) {
     if (evt.button == 0) {
         interacting = false;
         psel = undefined;
@@ -220,12 +226,8 @@ void main() {
 	vec3 posA = texture2D( tPosition, uv ).xyz;
 	
 	float idx;
-	vec2 idxColor;
 	
-	if ( cID == 0 )
-		idxColor = texture2D( tConstraints, uv ).xy;
-	if ( cID == 1 )
-		idxColor = texture2D( tConstraints, uv ).zw;
+	vec2 idxColor = ( cID == 0 ) ? texture2D( tConstraints, uv ).xy : texture2D( tConstraints, uv ).zw;
 		
 	idx = idxColor.r * 255.0 + idxColor.g * 255.0 * 256.0;
     uv = getUV( idx );
@@ -284,7 +286,7 @@ vec2 getUV( float id ) {
 }
 void main() {
 
-    vec4 diff, proj;
+    vec3 diff, proj;
 
 	vec2 uv = gl_FragCoord.xy / tSize.xy;
 	vec3 pos = texture2D( tPosition, uv ).xyz;
@@ -292,7 +294,7 @@ void main() {
     uv = getUV( psel );
 	vec3 ref = texture2D( tOriginal, uv ).xyz;
 	vec3 offset = mouse - ref;
-	if ( distance( org, ref ) <= 05.0 )  {
+	if ( distance( org, ref ) <= 10.0 )  {
 	
 	    diff = ref - org;
 	    
@@ -353,6 +355,7 @@ void main() {
 
 // shader-import-block
 
+// copyToRenderTarget
 const copyShader = new THREE.RawShaderMaterial({
     uniforms: {
         tSize: { type: 'v2' },
@@ -366,6 +369,7 @@ const copyShader = new THREE.RawShaderMaterial({
     depthTest: false
 });
 
+// forward-integration
 const integrateShader = copyShader.clone();
 integrateShader.fragmentShader = integrate_frag;
 integrateShader.uniforms = {
@@ -376,6 +380,7 @@ integrateShader.uniforms = {
     tPosition: { type: 't' }
 };
 
+// mouse displacement 
 const mouseShader = copyShader.clone();
 mouseShader.fragmentShader = mouse_frag;
 mouseShader.uniforms = {
@@ -386,6 +391,7 @@ mouseShader.uniforms = {
     tPosition: { type: 't' }
 };
 
+// vertices relaxation
 const constraintsShader = copyShader.clone();
 constraintsShader.fragmentShader = constraints_frag;
 constraintsShader.uniforms = {
@@ -397,6 +403,7 @@ constraintsShader.uniforms = {
     tConstraints: { type: 't' }
 };
 
+// calculate normals
 const normalsShader = copyShader.clone();
 normalsShader.fragmentShader = normals_frag;
 normalsShader.uniforms = {
@@ -413,9 +420,8 @@ let
     renderer, mesh, targetRT, ntargetRT, normalsRT,
     originalRT, previousRT, positionRT,
     constraintsRT, facesRT,
-    steps = 60;
+    steps = 50;
 
-// setup
 const
     tSize = new THREE.Vector2(),
     scene = new THREE.Scene(),
@@ -438,12 +444,14 @@ function init$2(WebGLRenderer) {
         -1.0, 3.0
     ]);
 
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 2));
+    geometry.addAttribute('position', new THREE.BufferAttribute(positions, 2));
 
     // mesh
     mesh = new THREE.Mesh(geometry, copyShader);
     mesh.frustumCulled = false;
     scene.add(mesh);
+
+    scene.updateMatrixWorld = function () { };
 
     // render targets
     originalRT = createRenderTarget();
@@ -453,7 +461,10 @@ function init$2(WebGLRenderer) {
     positionRT = createRenderTarget();
     normalsRT = createRenderTarget();
 
+
+    // this is dependant on the edge-coloring algorithm, need to experiment with what works for other models.
     constraintsRT = Array.from({ length: 4 }, createURenderTarget);
+    // same
     facesRT = Array.from({ length: 6 }, createURenderTarget);
 
     // prepare
@@ -461,16 +472,14 @@ function init$2(WebGLRenderer) {
     copyTexture(originalRT, previousRT);
     copyTexture(originalRT, positionRT);
 
+    // setup relaxed vertices conditions
     for (let i = 0; i < 4; i++) {
-
         copyTexture(createConstraintsTexture(i * 2), constraintsRT[i]);
-
     }
 
+    // compute faces information for normals
     for (let i = 0; i < 6; i++) {
-
         copyTexture(createFacesTexture(i), facesRT[i]);
-
     }
 
 }
@@ -687,9 +696,11 @@ function update() {
 
     integrate();
 
+    let mouseUpdating = updating();
+
     for (let i = 0; i < steps; i++) {
 
-        if (updating() && (i + 5) < steps) mouseOffset();
+        if (mouseUpdating && (i + 5) < steps) mouseOffset();
 
         for (let j = 0; j < 8; j++) {
 
@@ -731,6 +742,7 @@ function init$3(scene) {
 
     });
 
+    // update cloth material with computed position and normals
     material.onBeforeCompile = function (shader) {
         shader.uniforms.tPosition = { value: positionRT.texture };
         shader.uniforms.tNormal = { value: normalsRT.texture };
@@ -747,6 +759,7 @@ function init$3(scene) {
         );
     };
 
+    // update depth material for correct shadows
     const depthMaterial = new THREE.MeshDepthMaterial();
     depthMaterial.onBeforeCompile = function (shader) {
         shader.uniforms.tPosition = { value: positionRT.texture };
@@ -757,6 +770,7 @@ function init$3(scene) {
         );
     };
 
+    // fill position with associated texture sampling coordinate
     const position = new Float32Array(RESOLUTION$1 * RESOLUTION$1 * 3);
     for (let i = 0, il = RESOLUTION$1 * RESOLUTION$1; i < il; i++) {
 
@@ -768,8 +782,8 @@ function init$3(scene) {
 
     const geometry$1 = new THREE.BufferGeometry();
     geometry$1.setIndex(geometry.index);
-    geometry$1.setAttribute('position', new THREE.BufferAttribute(position, 3));
-    geometry$1.setAttribute('uv', geometry.attributes.uv);
+    geometry$1.addAttribute('position', new THREE.BufferAttribute(position, 3));
+    geometry$1.addAttribute('uv', geometry.attributes.uv);
 
     mesh$1 = new THREE.Mesh(geometry$1, material);
     mesh$1.customDepthMaterial = depthMaterial;
@@ -784,6 +798,51 @@ let
 
 const
     clock$1 = new THREE.Clock();
+
+function init$4(scene) {
+
+    // lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0);
+    ambientLight.baseIntensity = 0.5;
+
+    const spotLight = new THREE.SpotLight(0xfd8b8b, 0, 4000, Math.PI / 6, 0.2, 0.11);
+    spotLight.baseIntensity = 3.6;
+    spotLight.position.set(0.9, 0.1, -0.5).multiplyScalar(400);
+    spotLight.castShadow = true;
+    spotLight.shadow.radius = 20;
+    spotLight.shadow.camera.far = 4000;
+    spotLight.shadow.mapSize.height = 4096;
+    spotLight.shadow.mapSize.width = 4096;
+
+    const spotLight2 = new THREE.SpotLight(0x4a7fe8, 0, 4000, Math.PI / 6, 0.2, 0.11);
+    spotLight2.baseIntensity = 2.0;
+    spotLight2.position.set(-0.91, 0.1, -0.5).multiplyScalar(400);
+    spotLight2.castShadow = true;
+    spotLight2.shadow.radius = 20;
+    spotLight2.shadow.camera.far = 4000;
+    spotLight2.shadow.mapSize.height = 4096;
+    spotLight2.shadow.mapSize.width = 4096;
+
+    const spotLight3 = new THREE.SpotLight(0xffffff, 0, 4000, Math.PI / 5.5, 1.4, 0.08);
+    spotLight3.baseIntensity = 1.5;
+    spotLight3.position.set(0, 0, -1).multiplyScalar(400);
+    spotLight3.castShadow = true;
+    spotLight3.shadow.radius = 5;
+    spotLight3.shadow.camera.far = 4000;
+    spotLight3.shadow.mapSize.height = 4096;
+    spotLight3.shadow.mapSize.width = 4096;
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0);
+    directionalLight.baseIntensity = 0.3;
+    directionalLight.position.set(0, 1, +0.5);
+    const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0);
+    directionalLight2.baseIntensity = 1.3;
+    directionalLight2.position.set(0, 1, -0.4);
+
+    scene.add(ambientLight, spotLight, spotLight2, spotLight3, directionalLight, directionalLight2);
+    objects = [ambientLight, spotLight, spotLight2, spotLight3, directionalLight, directionalLight2];
+
+}
 
 function update$1() {
 
@@ -809,7 +868,7 @@ function update$1() {
 let
     renderer$1, camera$2, scene$1;
 
-function init$4() {
+function init$5() {
 
     // renderer
     renderer$1 = new THREE.WebGLRenderer({ antialias: true });
@@ -840,6 +899,7 @@ function init$4() {
 
     // initialization block
     init(scene$1);
+    init$4(scene$1);
     init$3(scene$1);
 
     init$1(camera$2, renderer$1.domElement);
@@ -874,4 +934,4 @@ window.onresize = function () {
     renderer$1.setSize(w, h);
 };
 
-init$4();
+init$5();

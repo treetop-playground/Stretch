@@ -15,7 +15,7 @@ vec2 getUV( float id ) {
 }
 void main() {
 
-    vec4 diff, proj;
+    vec3 diff, proj;
 
 	vec2 uv = gl_FragCoord.xy / tSize.xy;
 	vec3 pos = texture2D( tPosition, uv ).xyz;
@@ -23,7 +23,7 @@ void main() {
     uv = getUV( psel );
 	vec3 ref = texture2D( tOriginal, uv ).xyz;
 	vec3 offset = mouse - ref;
-	if ( distance( org, ref ) <= 05.0 )  {
+	if ( distance( org, ref ) <= 10.0 )  {
 	
 	    diff = ref - org;
 	    

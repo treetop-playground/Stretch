@@ -39,6 +39,7 @@ function init() {
 
     // initialization block
     BG.init(scene);
+    LIGHTS.init(scene);
     CLOTH.init(scene);
 
     MOUSE.init(camera, renderer.domElement);
