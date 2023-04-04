@@ -24,12 +24,12 @@ let
 
 function calculate() {
 
-    const tmp = new THREE.IcosahedronBufferGeometry(1000, 6);
+    const tmp = new THREE.IcosahedronBufferGeometry(1000, 5);
 
     // icosahedron generates non-indexed vertices, we make use of graph adjacency.
     geometry = THREE.BufferGeometryUtils.mergeVertices(tmp, 1.2);
 
-    geometry.scale(0.1, 0.1, 0.1);
+    geometry.scale(0.00095, 0.00095, 0.00095);
 
     populateVertices();
 
@@ -70,6 +70,53 @@ function populateAdjacency() {
         faces[b].push(face);
         faces[c].push(face);
     }
+
+    // support function - find face with winding order ( first ) -> ( next )
+    function getFace(arr, first, next) {
+
+        for (let r = 0; r < arr.length; r++) {
+
+            var n = arr[r];
+
+            if (n.a === first && n.b === next ||
+                n.b === first && n.c === next ||
+                n.c === first && n.a === next)
+                return n
+        }
+
+        console.error("sheen.error: shouldn't reach here.");
+        return
+    }
+
+    adjacency = Array.from({ length: vertices.length }, () => new Array());
+
+    // compute sorted adjacency list for every vertex
+    for (let r = 0; r < faces.length; r++) {
+
+        let n = faces[r][0];
+
+        // cycle in a fan, through all faces of the vertex
+        while (true) {
+
+            if (n.a == r) {
+
+                adjacency[r].push(n.c);
+                n = getFace(faces[r], r, n.c); // face with reverse winding order ( a ) -> ( c )
+
+            } else if (n.b == r) {
+
+                adjacency[r].push(n.a);
+                n = getFace(faces[r], r, n.a); // face with reverse winding order ( b ) -> ( a )
+
+            } else { // n.c == r
+                adjacency[r].push(n.b);
+                n = getFace(faces[r], r, n.b); // face with reverse winding order ( c ) -> ( b )
+            }
+
+            // back to the start - end
+            if (n == faces[r][0]) break;
+        }
+    }
 }
 
 function dispose() {
@@ -88,8 +135,8 @@ const
     tmpmouse = new THREE.Vector3(),
     mouse3d = new THREE.Vector3(),
     raycaster = new THREE.Raycaster(),
-    plane = new THREE.Plane(undefined, -180),
-    sphere = new THREE.Sphere(undefined, 100);
+    plane = new THREE.Plane(undefined, -1.8),
+    sphere = new THREE.Sphere(undefined, 1);
 
 function init$1(PerspectiveCamera) {
 
@@ -99,6 +146,10 @@ function init$1(PerspectiveCamera) {
     window.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mouseout', onMouseOut);
     window.addEventListener('mouseup', onMouseUp);
+
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchstart', onTouchDown);
+    window.addEventListener('touchend', onTouchUp);
 }
 
 function updating() {
@@ -154,6 +205,31 @@ function onMouseOut() {
 
 }
 
+function onTouchMove(evt) {
+
+    evt.preventDefault();
+
+    mouse.x = (evt.touches[0].pageX / window.innerWidth) * 2 - 1;
+    mouse.y = -(evt.touches[0].pageY / window.innerHeight) * 2 + 1;
+
+}
+
+function onTouchDown(evt) {
+
+    interacting = true;
+
+    mouse.x = (evt.touches[0].pageX / window.innerWidth) * 2 - 1;
+    mouse.y = -(evt.touches[0].pageY / window.innerHeight) * 2 + 1;
+
+}
+
+function onTouchUp() {
+
+    interacting = false;
+    psel = undefined;
+
+}
+
 var through_vert = /* glsl */`
 precision highp float;
 attribute vec2 position;
@@ -164,9 +240,12 @@ void main() {
 
 var constraints_frag = /* glsl */`
 precision highp float;
+precision highp sampler2D;
 
 uniform vec2 tSize;
-uniform sampler2D tPosition;
+uniform float order;
+uniform sampler2D tPosition0;
+uniform sampler2D tPosition1;
 
 uniform sampler2D tDistancesA;
 uniform sampler2D tDistancesB;
@@ -204,15 +283,15 @@ void main() {
 	vec4 distancesB = texture2D( tDistancesB, uv );
 	
 	// vertex position
-	vec3 p0 = texture2D( tPosition, uv ).xyz;
+	vec3 p0 = ( texture2D( tPosition0, uv ).xyz + texture2D( tPosition1, uv ).xyz ) / 1024.0;
 	
 	// adjacent vertices positions
-    vec3 p1 = texture2D( tPosition, getUV( adjacentA.x ) ).xyz;
-    vec3 p2 = texture2D( tPosition, getUV( adjacentA.y ) ).xyz;
-    vec3 p3 = texture2D( tPosition, getUV( adjacentA.z ) ).xyz;
-    vec3 p4 = texture2D( tPosition, getUV( adjacentA.w ) ).xyz;
-    vec3 p5 = texture2D( tPosition, getUV( adjacentB.x ) ).xyz;
-	vec3 p6 = texture2D( tPosition, getUV( adjacentB.y ) ).xyz;
+    vec3 p1 = ( texture2D( tPosition0, getUV( adjacentA.x ) ).xyz + texture2D( tPosition1, getUV( adjacentA.x ) ).xyz ) / 1024.0;
+    vec3 p2 = ( texture2D( tPosition0, getUV( adjacentA.y ) ).xyz + texture2D( tPosition1, getUV( adjacentA.y ) ).xyz ) / 1024.0;
+    vec3 p3 = ( texture2D( tPosition0, getUV( adjacentA.z ) ).xyz + texture2D( tPosition1, getUV( adjacentA.z ) ).xyz ) / 1024.0;
+    vec3 p4 = ( texture2D( tPosition0, getUV( adjacentA.w ) ).xyz + texture2D( tPosition1, getUV( adjacentA.w ) ).xyz ) / 1024.0;
+    vec3 p5 = ( texture2D( tPosition0, getUV( adjacentB.x ) ).xyz + texture2D( tPosition1, getUV( adjacentB.x ) ).xyz ) / 1024.0;
+	vec3 p6 = ( texture2D( tPosition0, getUV( adjacentB.y ) ).xyz + texture2D( tPosition1, getUV( adjacentB.y ) ).xyz ) / 1024.0;
 	
 	// spring-based displacement
     displacement += getDisplacement( p0, p1, distancesA.x );
@@ -222,20 +301,24 @@ void main() {
     displacement += getDisplacement( p0, p5, distancesB.x );
     displacement += ( adjacentB.y > 0.0 ) ? getDisplacement( p0, p6, distancesB.y ) : vec3( 0 );
 	
-	p0 += 0.95 * displacement / ( ( adjacentB.y > 0.0 ) ? 6.0 : 5.0 );
+	p0 += 0.76 * displacement / ( ( adjacentB.y > 0.0 ) ? 6.0 : 5.0 );
 	
-	gl_FragColor = vec4( p0, 1.0 );
+	p0 *= 1024.0;
+	gl_FragColor = vec4( ( order > 0.0 ) ? floor( p0 ) : fract( p0 ), 1.0 );
 }
 `;
 
 var integrate_frag = /* glsl */`
 precision highp float;
+precision highp sampler2D;
 
 uniform vec2 tSize;
-
+uniform float order;
 uniform sampler2D tOriginal;
-uniform sampler2D tPrevious;
-uniform sampler2D tPosition;
+uniform sampler2D tPrevious0;
+uniform sampler2D tPrevious1;
+uniform sampler2D tPosition0;
+uniform sampler2D tPosition1;
 
 #define dt 0.016
 
@@ -244,22 +327,29 @@ void main() {
     float dt2 = dt * dt;
 
 	vec2 uv = gl_FragCoord.xy / tSize.xy;
+
 	vec3 org = texture2D( tOriginal, uv ).xyz;
-	vec3 prv = texture2D( tPrevious, uv ).xyz;
-	vec3 pos = texture2D( tPosition, uv ).xyz;
+	vec3 prv = ( texture2D( tPrevious0, uv ).xyz + texture2D( tPrevious1, uv ).xyz ) / 1024.0;
+	vec3 pos = ( texture2D( tPosition0, uv ).xyz + texture2D( tPosition1, uv ).xyz ) / 1024.0;
+
 	vec3 offset = ( org - pos ) * 20.5 * dt2 * 8.33333;
 	vec3 disp = ( pos - prv ) * 0.91 + pos;
-	gl_FragColor = vec4( disp + offset, 1.0 );
+	
+	vec3 res = ( disp + offset ) * 1024.0;
+	gl_FragColor = vec4( ( order > 0.0 ) ? floor( res ) : fract( res ), 1.0 );
 }
 `;
 
 var mouse_frag = /* glsl */`
 precision highp float;
+precision highp sampler2D;
 
 uniform float psel;
 uniform vec2 tSize;
 uniform vec3 mouse;
-uniform sampler2D tPosition;
+uniform float order;
+uniform sampler2D tPosition0;
+uniform sampler2D tPosition1;
 uniform sampler2D tOriginal;
 
 // get vec2 tex coordinate from index
@@ -276,27 +366,31 @@ vec2 getUV( float id ) {
 void main() {
 	vec2 uv = gl_FragCoord.xy / tSize.xy;
 	
-	vec3 pos = texture2D( tPosition, uv ).xyz;
+	vec3 pos = ( texture2D( tPosition0, uv ).xyz + texture2D( tPosition1, uv ).xyz ) / 1024.0 ;
 	vec3 org = texture2D( tOriginal, uv ).xyz;
 	vec3 ref = texture2D( tOriginal, getUV( psel ) ).xyz;
 	
 	vec3 diff, proj, offset = mouse - ref;
 
-	if ( distance( org, ref ) <= 10.0 )  {
+	if ( distance( org, ref ) <= 0.1 )  {
 		diff = ref - org;
 		proj = dot( diff, offset ) / dot( offset, offset ) * org;
 		pos = org + proj + offset;
 	}
-	gl_FragColor = vec4( pos, 1.0 );
+
+	pos *= 1024.0;
+	gl_FragColor = vec4( ( order > 0.0 ) ? floor( pos ) : fract( pos ), 1.0 );
 }
 `;
 
 var normals_frag = /* glsl */`
 precision highp float;
+precision highp sampler2D;
 
 uniform vec2 tSize;
 
-uniform sampler2D tPosition;
+uniform sampler2D tPosition0;
+uniform sampler2D tPosition1;
 
 uniform sampler2D tAdjacentsA;
 uniform sampler2D tAdjacentsB;
@@ -317,27 +411,26 @@ void main () {
 	vec2 uv = gl_FragCoord.xy / tSize.xy;
 
 	// indices of adjacent vertices
-    vec4 adjacentsA = texture2D( tAdjacentsA, uv );
-    vec4 adjacentsB = texture2D( tAdjacentsB, uv );
+	vec4 adjacentA = texture2D( tAdjacentsA, uv );
+	vec4 adjacentB = texture2D( tAdjacentsB, uv );
 
 	// vertex position
-    vec3 p0 = texture2D( tPosition, uv ).xyz;
-
+    vec3 p0 = ( texture2D( tPosition0, uv ).xyz + texture2D( tPosition1, uv ).xyz ) / 1024.0;
 	// adjacent vertices positions
-    vec3 p1 = texture2D( tPosition, getUV( adjacentsA.x ) ).xyz;
-    vec3 p2 = texture2D( tPosition, getUV( adjacentsA.y ) ).xyz;
-    vec3 p3 = texture2D( tPosition, getUV( adjacentsA.z ) ).xyz;
-    vec3 p4 = texture2D( tPosition, getUV( adjacentsA.w ) ).xyz;
-    vec3 p5 = texture2D( tPosition, getUV( adjacentsB.x ) ).xyz;
-    vec3 p6 = texture2D( tPosition, getUV( adjacentsB.y ) ).xyz;
-	
+    vec3 p1 = ( texture2D( tPosition0, getUV( adjacentA.x ) ).xyz + texture2D( tPosition1, getUV( adjacentA.x ) ).xyz ) / 1024.0;
+    vec3 p2 = ( texture2D( tPosition0, getUV( adjacentA.y ) ).xyz + texture2D( tPosition1, getUV( adjacentA.y ) ).xyz ) / 1024.0;
+    vec3 p3 = ( texture2D( tPosition0, getUV( adjacentA.z ) ).xyz + texture2D( tPosition1, getUV( adjacentA.z ) ).xyz ) / 1024.0;
+    vec3 p4 = ( texture2D( tPosition0, getUV( adjacentA.w ) ).xyz + texture2D( tPosition1, getUV( adjacentA.w ) ).xyz ) / 1024.0;
+    vec3 p5 = ( texture2D( tPosition0, getUV( adjacentB.x ) ).xyz + texture2D( tPosition1, getUV( adjacentB.x ) ).xyz ) / 1024.0;
+    vec3 p6 = ( texture2D( tPosition0, getUV( adjacentB.y ) ).xyz + texture2D( tPosition1, getUV( adjacentB.y ) ).xyz ) / 1024.0;
+    
     // compute vertex normal contribution
     normal += cross( p1 - p0, p2 - p0 );
     normal += cross( p2 - p0, p3 - p0 );
     normal += cross( p3 - p0, p4 - p0 );
     normal += cross( p4 - p0, p5 - p0 );
     
-	if ( adjacentsB.y > 0.0 ) {
+	if ( adjacentB.y > 0.0 ) {
         normal += cross( p5 - p0, p6 - p0 );
         normal += cross( p6 - p0, p1 - p0 );
     } else {
@@ -350,11 +443,17 @@ void main () {
 
 var through_frag = /* glsl */`
 precision highp float;
+precision highp sampler2D;
+
 uniform vec2 tSize;
+uniform float order;
 uniform sampler2D texture;
+
 void main() {
 	vec2 uv = gl_FragCoord.xy / tSize.xy;
-	gl_FragColor = texture2D( texture, uv );
+
+	vec4 img = texture2D( texture, uv ) * 1024.0;
+	gl_FragColor = ( order > 0.0 ) ? floor( img ) : fract( img );
 }
 `;
 
@@ -363,6 +462,7 @@ void main() {
 // copyToRenderTarget
 const copyShader = new THREE.RawShaderMaterial({
     uniforms: {
+        order: {},
         tSize: { type: 'v2' },
         texture: { type: 't' }
     },
@@ -380,9 +480,12 @@ integrateShader.fragmentShader = integrate_frag;
 integrateShader.uniforms = {
     dt: { type: 'f' },
     tSize: { type: 'v2' },
+    order: {},
     tOriginal: { type: 't' },
-    tPrevious: { type: 't' },
-    tPosition: { type: 't' }
+    tPrevious0: { type: 't' },
+    tPrevious1: { type: 't' },
+    tPosition0: { type: 't' },
+    tPosition1: { type: 't' }
 };
 
 // mouse displacement 
@@ -390,10 +493,12 @@ const mouseShader = copyShader.clone();
 mouseShader.fragmentShader = mouse_frag;
 mouseShader.uniforms = {
     psel: { value: null },
+    order: {},
     tSize: { type: 'v2' },
     mouse: { type: 'v3' },
     tOriginal: { type: 't' },
-    tPosition: { type: 't' }
+    tPosition0: { type: 't' },
+    tPosition1: { type: 't' }
 };
 
 // vertices relaxation
@@ -401,7 +506,9 @@ const constraintsShader = copyShader.clone();
 constraintsShader.fragmentShader = constraints_frag;
 constraintsShader.uniforms = {
     tSize: { type: 'v2' },
-    tPosition: { type: 't' },
+    order: {},
+    tPosition0: { type: 't' },
+    tPosition1: { type: 't' },
     tAdjacentsA: { type: 't' },
     tAdjacentsB: { type: 't' },
     tDistancesA: { type: 't' },
@@ -413,7 +520,8 @@ const normalsShader = copyShader.clone();
 normalsShader.fragmentShader = normals_frag;
 normalsShader.uniforms = {
     tSize: { type: 'v2' },
-    tPosition: { type: 't' },
+    tPosition0: { type: 't' },
+    tPosition1: { type: 't' },
     tAdjacentsA: { type: 't' },
     tAdjacentsB: { type: 't' }
 };
@@ -423,8 +531,7 @@ let
     renderer, mesh, targetRT, normalsRT,
     originalRT, previousRT, positionRT,
     adjacentsRT, distancesRT,
-    steps = 50;
-
+    steps = 40;
 
 const
     tSize = new THREE.Vector2(),
@@ -456,40 +563,37 @@ function init$2(WebGLRenderer) {
 
     scene.updateMatrixWorld = function () { };
 
-    // render targets
-    originalRT = createRenderTarget();
-    targetRT = createRenderTarget();
-    previousRT = createRenderTarget();
-    positionRT = createRenderTarget();
-    normalsRT = createRenderTarget();
-
-    adjacentsRT = Array.from({ length: 2 }, createRenderTarget);
-    distancesRT = Array.from({ length: 2 }, createRenderTarget);
+    adjacentsRT = new Array(2);
+    distancesRT = new Array(2);
+    positionRT = new Array(2);
+    previousRT = new Array(2);
+    targetRT = new Array(2);
 
     // prepare
-    copyTexture(createPositionTexture(), originalRT);
-    copyTexture(originalRT, previousRT);
-    copyTexture(originalRT, positionRT);
+    createPositionTexture();
+    normalsRT = createRenderTarget();
 
     // setup relaxed vertices conditions
     for (let i = 0; i < 2; i++) {
 
-        copyTexture(createAdjacentsTexture(i * 4), adjacentsRT[i]);
+        createAdjacentsTexture(i);
+        createDistancesTexture(i);
 
-    }
+        positionRT[i] = createRenderTarget();
+        previousRT[i] = createRenderTarget();
+        targetRT[i] = createRenderTarget();
 
-    // setup vertices original distances
-    for (let i = 0; i < 2; i++) {
-
-        copyTexture(createDistancesTexture(i * 4), distancesRT[i]);
+        copyTexture(originalRT, positionRT[i], !i);
+        copyTexture(originalRT, previousRT[i], !i);
 
     }
 
 }
 
-function copyTexture(input, output) {
+function copyTexture(input, output, order) {
 
     mesh.material = copyShader;
+    copyShader.uniforms.order.value = (order) ? 1 : - 1;
     copyShader.uniforms.tSize.value = tSize;
     copyShader.uniforms.texture.value = input.texture;
 
@@ -501,16 +605,8 @@ function copyTexture(input, output) {
 function createRenderTarget() {
 
     return new THREE.WebGLRenderTarget(RESOLUTION, RESOLUTION, {
-        wrapS: THREE.ClampToEdgeWrapping,
-        wrapT: THREE.ClampToEdgeWrapping,
-        minFilter: THREE.NearestFilter,
-        magFilter: THREE.NearestFilter,
         format: THREE.RGBAFormat,
-        type: THREE.FloatType,
-        depthTest: false,
-        depthWrite: false,
-        depthBuffer: false,
-        stencilBuffer: false
+        type: THREE.HalfFloatType
     });
 
 }
@@ -532,13 +628,9 @@ function createPositionTexture() {
 
     const tmp = {};
     tmp.texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.FloatType);
-    tmp.texture.minFilter = THREE.NearestFilter;
-    tmp.texture.magFilter = THREE.NearestFilter;
     tmp.texture.needsUpdate = true;
-    tmp.texture.generateMipmaps = false;
-    tmp.texture.flipY = false;
 
-    return tmp;
+    originalRT = tmp;
 
 }
 
@@ -551,24 +643,18 @@ function createAdjacentsTexture(k) {
 
         const i4 = i * 4;
         const adj = adjacency[i];
-        const len = adjacency[i].length;
+        const len = adjacency[i].length - 1;
 
-        data[i4 + 0] = adj[k + 0];
-        data[i4 + 1] = (len < 6 && k > 0) ? - 1 : adj[k + 1];
-        data[i4 + 2] = (k > 0) ? - 1 : adj[k + 2];
-        data[i4 + 3] = (k > 0) ? - 1 : adj[k + 3];
+        for (let j = 0; j < 4; j++)
+            data[i4 + j] = (len < k * 4 + j) ? - 1 : adj[k * 4 + j];
 
     }
 
     const tmp = {};
     tmp.texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.FloatType);
-    tmp.texture.minFilter = THREE.NearestFilter;
-    tmp.texture.magFilter = THREE.NearestFilter;
     tmp.texture.needsUpdate = true;
-    tmp.texture.generateMipmaps = false;
-    tmp.texture.flipY = false;
 
-    return tmp;
+    adjacentsRT[k] = tmp;
 
 }
 
@@ -583,26 +669,20 @@ function createDistancesTexture(k) {
 
         const i4 = i * 4;
         const adj = adjacency[i];
-        const len = adjacency[i].length;
+        const len = adjacency[i].length - 1;
 
         const v = vert[i];
 
-        data[i4 + 0] = v.distanceTo(vert[adj[k + 0]]);
-        data[i4 + 1] = (len < 6 && k > 0) ? - 1 : v.distanceTo(vert[adj[k + 1]]);
-        data[i4 + 2] = (k > 0) ? - 1 : v.distanceTo(vert[adj[k + 2]]);
-        data[i4 + 3] = (k > 0) ? - 1 : v.distanceTo(vert[adj[k + 3]]);
+        for (let j = 0; j < 4; j++)
+            data[i4 + j] = (len < k * 4 + j) ? - 1 : v.distanceTo(vert[adj[k * 4 + j]]);
 
     }
 
     const tmp = {};
     tmp.texture = new THREE.DataTexture(data, RESOLUTION, RESOLUTION, THREE.RGBAFormat, THREE.FloatType);
-    tmp.texture.minFilter = THREE.NearestFilter;
-    tmp.texture.magFilter = THREE.NearestFilter;
     tmp.texture.needsUpdate = true;
-    tmp.texture.generateMipmaps = false;
-    tmp.texture.flipY = false;
 
-    return tmp;
+    distancesRT[k] = tmp;
 
 }
 
@@ -611,16 +691,32 @@ function integrate() {
     mesh.material = integrateShader;
     integrateShader.uniforms.tSize.value = tSize;
     integrateShader.uniforms.tOriginal.value = originalRT.texture;
-    integrateShader.uniforms.tPrevious.value = previousRT.texture;
-    integrateShader.uniforms.tPosition.value = positionRT.texture;
+    integrateShader.uniforms.tPrevious0.value = previousRT[0].texture;
+    integrateShader.uniforms.tPrevious1.value = previousRT[1].texture;
+    integrateShader.uniforms.tPosition0.value = positionRT[0].texture;
+    integrateShader.uniforms.tPosition1.value = positionRT[1].texture;
 
-    renderer.setRenderTarget(targetRT);
+    // integer-part
+    integrateShader.uniforms.order.value = 1;
+    renderer.setRenderTarget(targetRT[0]);
     renderer.render(scene, camera$1);
 
-    const tmp = previousRT;
-    previousRT = positionRT;
-    positionRT = targetRT;
-    targetRT = tmp;
+    // fraction-part
+    integrateShader.uniforms.order.value = -1;
+    renderer.setRenderTarget(targetRT[1]);
+    renderer.render(scene, camera$1);
+
+
+    // swap framebuffers
+    let tmp = previousRT[0];
+    previousRT[0] = positionRT[0];
+    positionRT[0] = targetRT[0];
+    targetRT[0] = tmp;
+
+    tmp = previousRT[1];
+    previousRT[1] = positionRT[1];
+    positionRT[1] = targetRT[1];
+    targetRT[1] = tmp;
 
 }
 
@@ -628,18 +724,32 @@ function solveConstraints() {
 
     mesh.material = constraintsShader;
     constraintsShader.uniforms.tSize.value = tSize;
-    constraintsShader.uniforms.tPosition.value = positionRT.texture;
+    constraintsShader.uniforms.tPosition0.value = positionRT[0].texture;
+    constraintsShader.uniforms.tPosition1.value = positionRT[1].texture;
     constraintsShader.uniforms.tAdjacentsA.value = adjacentsRT[0].texture;
     constraintsShader.uniforms.tAdjacentsB.value = adjacentsRT[1].texture;
     constraintsShader.uniforms.tDistancesA.value = distancesRT[0].texture;
     constraintsShader.uniforms.tDistancesB.value = distancesRT[1].texture;
 
-    renderer.setRenderTarget(targetRT);
+    // integer-part
+    constraintsShader.uniforms.order.value = 1;
+    renderer.setRenderTarget(targetRT[0]);
     renderer.render(scene, camera$1);
 
-    const tmp = positionRT;
-    positionRT = targetRT;
-    targetRT = tmp;
+    // fraction-part
+    constraintsShader.uniforms.order.value = -1;
+    renderer.setRenderTarget(targetRT[1]);
+    renderer.render(scene, camera$1);
+
+
+    // swap framebuffers
+    let tmp = positionRT[0];
+    positionRT[0] = targetRT[0];
+    targetRT[0] = tmp;
+
+    tmp = positionRT[1];
+    positionRT[1] = targetRT[1];
+    targetRT[1] = tmp;
 
 }
 
@@ -650,14 +760,28 @@ function mouseOffset() {
     mouseShader.uniforms.psel.value = psel;
     mouseShader.uniforms.mouse.value = mouse3d;
     mouseShader.uniforms.tOriginal.value = originalRT.texture;
-    mouseShader.uniforms.tPosition.value = positionRT.texture;
+    mouseShader.uniforms.tPosition0.value = positionRT[0].texture;
+    mouseShader.uniforms.tPosition1.value = positionRT[1].texture;
 
-    renderer.setRenderTarget(targetRT);
+    // integer-part
+    mouseShader.uniforms.order.value = 1;
+    renderer.setRenderTarget(targetRT[0]);
     renderer.render(scene, camera$1);
 
-    const tmp = positionRT;
-    positionRT = targetRT;
-    targetRT = tmp;
+    // fraction-part
+    mouseShader.uniforms.order.value = -1;
+    renderer.setRenderTarget(targetRT[1]);
+    renderer.render(scene, camera$1);
+
+
+    // swap framebuffers
+    let tmp = positionRT[0];
+    positionRT[0] = targetRT[0];
+    targetRT[0] = tmp;
+
+    tmp = positionRT[1];
+    positionRT[1] = targetRT[1];
+    targetRT[1] = tmp;
 
 }
 
@@ -665,7 +789,8 @@ function computeVertexNormals() {
 
     mesh.material = normalsShader;
     normalsShader.uniforms.tSize.value = tSize;
-    normalsShader.uniforms.tPosition.value = positionRT.texture;
+    normalsShader.uniforms.tPosition0.value = positionRT[0].texture;
+    normalsShader.uniforms.tPosition1.value = positionRT[1].texture;
     normalsShader.uniforms.tAdjacentsA.value = adjacentsRT[0].texture;
     normalsShader.uniforms.tAdjacentsB.value = adjacentsRT[1].texture;
 
@@ -701,12 +826,15 @@ function init$3(scene) {
     RESOLUTION$1 = Math.ceil(Math.sqrt(vertices.length));
 
     const bmp = new THREE.TextureLoader().load('./src/textures/bmpMap.png');
+    bmp.wrapS = THREE.RepeatWrapping;
+    bmp.wrapT = THREE.RepeatWrapping;
+    bmp.repeat.set(2.5, 2.5);
 
     const material = new THREE.MeshPhysicalMaterial({
 
         color: 0xffda20,
         bumpMap: bmp,
-        bumpScale: 0.25,
+        bumpScale: 0.02,
         metalness: 0.1,
         roughness: 0.6,
         clearcoat: 0.8,
@@ -718,12 +846,13 @@ function init$3(scene) {
 
     // update cloth material with computed position and normals
     material.onBeforeCompile = function (shader) {
-        shader.uniforms.tPosition = { value: positionRT.texture };
+        shader.uniforms.tPosition0 = { value: positionRT[0].texture };
+        shader.uniforms.tPosition1 = { value: positionRT[1].texture };
         shader.uniforms.tNormal = { value: normalsRT.texture };
-        shader.vertexShader = 'uniform sampler2D tPosition;\nuniform sampler2D tNormal;\n' + shader.vertexShader;
+        shader.vertexShader = 'precision highp sampler2D;\nuniform sampler2D tPosition0;uniform sampler2D tPosition1;\nuniform sampler2D tNormal;\n' + shader.vertexShader;
         shader.vertexShader = shader.vertexShader.replace(
             '#include <beginnormal_vertex>',
-            `vec3 transformed = texture2D( tPosition, position.xy ).xyz;
+            `vec3 transformed = ( texture2D( tPosition0, position.xy ).xyz + texture2D( tPosition1, position.xy ).xyz ) / 1024.0;
 			 vec3 objectNormal = normalize( texture2D( tNormal, position.xy ).xyz );
 			`
         );
@@ -736,11 +865,12 @@ function init$3(scene) {
     // update depth material for correct shadows
     const depthMaterial = new THREE.MeshDepthMaterial();
     depthMaterial.onBeforeCompile = function (shader) {
-        shader.uniforms.tPosition = { value: positionRT.texture };
-        shader.vertexShader = 'uniform sampler2D tPosition;\n' + shader.vertexShader;
+        shader.uniforms.tPosition0 = { value: positionRT[0].texture };
+        shader.uniforms.tPosition1 = { value: positionRT[1].texture };
+        shader.vertexShader = 'precision highp sampler2D;\nuniform sampler2D tPosition0;uniform sampler2D tPosition1;\n' + shader.vertexShader;
         shader.vertexShader = shader.vertexShader.replace(
             '#include <begin_vertex>',
-            `vec3 transformed = texture2D( tPosition, position.xy ).xyz;`
+            `vec3 transformed = ( texture2D( tPosition0, position.xy ).xyz + texture2D( tPosition1, position.xy ).xyz ) / 1024.0;`
         );
     };
 
@@ -789,12 +919,12 @@ function init$4(scene) {
 
     const spotLight3 = new THREE.SpotLight(0xffffff, 0, 4000, Math.PI / 5.5, 1.4, 0.08);
     spotLight3.baseIntensity = 1.5;
-    spotLight3.position.set(0, 0, -1).multiplyScalar(400);
+    spotLight3.position.set(0, 0, -1).multiplyScalar(4);
     spotLight3.castShadow = true;
-    spotLight3.shadow.radius = 5;
+    spotLight3.shadow.radius = 3;
     spotLight3.shadow.camera.far = 4000;
-    spotLight3.shadow.mapSize.height = 1024;
-    spotLight3.shadow.mapSize.width = 1024;
+    spotLight3.shadow.mapSize.height = 256;
+    spotLight3.shadow.mapSize.width = 256;
 
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0);
     directionalLight.baseIntensity = 0.3;
@@ -832,7 +962,7 @@ function init$5() {
     // renderer
     renderer$1 = new THREE.WebGLRenderer({ antialias: true });
     renderer$1.setSize(window.innerWidth, window.innerHeight);
-    renderer$1.setPixelRatio(window.devicePixelRatio);
+    // renderer.setPixelRatio(window.devicePixelRatio);
 
     renderer$1.gammaOutput = true;
     renderer$1.physicallyCorrectLights = true;
@@ -847,8 +977,8 @@ function init$5() {
     scene$1.background = new THREE.Color(0x121312);
 
     // camera
-    camera$2 = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 4000);
-    camera$2.position.set(0, - 50, - 350);
+    camera$2 = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 4000);
+    camera$2.position.set(0, - 0.5, - 3.5);
     camera$2.lookAt(new THREE.Vector3());
 
     // pre-calculate geometry information

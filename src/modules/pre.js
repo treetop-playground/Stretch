@@ -3,12 +3,12 @@ let
 
 function calculate() {
 
-    const tmp = new THREE.IcosahedronBufferGeometry(1000, 6);
+    const tmp = new THREE.IcosahedronBufferGeometry(1000, 5);
 
     // icosahedron generates non-indexed vertices, we make use of graph adjacency.
     geometry = THREE.BufferGeometryUtils.mergeVertices(tmp, 1.2);
 
-    geometry.scale(0.1, 0.1, 0.1);
+    geometry.scale(0.00095, 0.00095, 0.00095);
 
     populateVertices();
 
@@ -66,9 +66,7 @@ function populateAdjacency() {
         console.error("sheen.error: shouldn't reach here.");
         return
     }
-}
 
-function populateColors() {
     adjacency = Array.from({ length: vertices.length }, () => new Array());
 
     // compute sorted adjacency list for every vertex

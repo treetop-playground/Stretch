@@ -10,6 +10,7 @@ import through_frag from '../glsl/through.frag.js';
 // copyToRenderTarget
 const copyShader = new THREE.RawShaderMaterial({
     uniforms: {
+        order: {},
         tSize: { type: 'v2' },
         texture: { type: 't' }
     },
@@ -27,9 +28,12 @@ integrateShader.fragmentShader = integrate_frag;
 integrateShader.uniforms = {
     dt: { type: 'f' },
     tSize: { type: 'v2' },
+    order: {},
     tOriginal: { type: 't' },
-    tPrevious: { type: 't' },
-    tPosition: { type: 't' }
+    tPrevious0: { type: 't' },
+    tPrevious1: { type: 't' },
+    tPosition0: { type: 't' },
+    tPosition1: { type: 't' }
 };
 
 // mouse displacement 
@@ -37,10 +41,12 @@ const mouseShader = copyShader.clone();
 mouseShader.fragmentShader = mouse_frag;
 mouseShader.uniforms = {
     psel: { value: null },
+    order: {},
     tSize: { type: 'v2' },
     mouse: { type: 'v3' },
     tOriginal: { type: 't' },
-    tPosition: { type: 't' }
+    tPosition0: { type: 't' },
+    tPosition1: { type: 't' }
 };
 
 // vertices relaxation
@@ -48,7 +54,9 @@ const constraintsShader = copyShader.clone();
 constraintsShader.fragmentShader = constraints_frag;
 constraintsShader.uniforms = {
     tSize: { type: 'v2' },
-    tPosition: { type: 't' },
+    order: {},
+    tPosition0: { type: 't' },
+    tPosition1: { type: 't' },
     tAdjacentsA: { type: 't' },
     tAdjacentsB: { type: 't' },
     tDistancesA: { type: 't' },
@@ -60,7 +68,8 @@ const normalsShader = copyShader.clone();
 normalsShader.fragmentShader = normals_frag;
 normalsShader.uniforms = {
     tSize: { type: 'v2' },
-    tPosition: { type: 't' },
+    tPosition0: { type: 't' },
+    tPosition1: { type: 't' },
     tAdjacentsA: { type: 't' },
     tAdjacentsB: { type: 't' }
 };
