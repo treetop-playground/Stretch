@@ -24,10 +24,12 @@ let
 
 function calculate() {
 
-    const tmp = new THREE.IcosahedronBufferGeometry(100, 5);
+    const tmp = new THREE.IcosahedronBufferGeometry(1000, 6);
 
     // icosahedron generates non-indexed vertices, we make use of graph adjacency.
-    geometry = THREE.BufferGeometryUtils.mergeVertices(tmp, 1.5);
+    geometry = THREE.BufferGeometryUtils.mergeVertices(tmp, 1.2);
+
+    geometry.scale(0.1, 0.1, 0.1);
 
     populateVertices();
 
@@ -95,6 +97,7 @@ function init$1(PerspectiveCamera) {
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseout', onMouseOut);
     window.addEventListener('mouseup', onMouseUp);
 }
 
@@ -143,6 +146,12 @@ function onMouseUp(evt) {
         interacting = false;
         psel = undefined;
     }
+}
+function onMouseOut() {
+
+    interacting = false;
+    psel = undefined;
+
 }
 
 var through_vert = /* glsl */`
@@ -213,7 +222,7 @@ void main() {
     displacement += getDisplacement( p0, p5, distancesB.x );
     displacement += ( adjacentB.y > 0.0 ) ? getDisplacement( p0, p6, distancesB.y ) : vec3( 0 );
 	
-	p0 += 0.93 * displacement / ( ( adjacentB.y > 0.0 ) ? 6.0 : 5.0 );
+	p0 += 0.95 * displacement / ( ( adjacentB.y > 0.0 ) ? 6.0 : 5.0 );
 	
 	gl_FragColor = vec4( p0, 1.0 );
 }
@@ -414,7 +423,7 @@ let
     renderer, mesh, targetRT, normalsRT,
     originalRT, previousRT, positionRT,
     adjacentsRT, distancesRT,
-    steps = 40;
+    steps = 50;
 
 
 const
