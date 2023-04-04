@@ -19,6 +19,7 @@ function init(PerspectiveCamera) {
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseout', onMouseOut);
     window.addEventListener('mouseup', onMouseUp);
 }
 
@@ -70,5 +71,12 @@ function onMouseUp(evt) {
         psel = undefined;
     }
 };
+
+function onMouseOut() {
+
+    interacting = false;
+    psel = undefined;
+
+}
 
 export { init, updating, mouse3d, psel };
