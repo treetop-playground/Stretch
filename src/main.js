@@ -5,14 +5,13 @@ import * as PRE from './modules/pre.js';
 import * as LIGHTS from './modules/lights.js';
 import * as MOUSE from './modules/mouse.js';
 
-let renderer, camera, scene;
+let renderer, camera, scene, lastOrientation;
 
 function init() {
 
     // renderer
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    // renderer.setPixelRatio(window.devicePixelRatio);
 
     renderer.gammaOutput = true;
     renderer.physicallyCorrectLights = true;
@@ -21,6 +20,8 @@ function init() {
     renderer.shadowMap.type = THREE.PCFShadowMap;
 
     document.body.appendChild(renderer.domElement);
+
+    window.addEventListener('resize', onResize);
 
     // scene
     scene = new THREE.Scene();
@@ -51,6 +52,11 @@ function init() {
 
 function animate() {
 
+    if (window.orientation != lastOrientation) {
+        lastOrientation = window.orientation;
+        onResize();
+    }
+
     LIGHTS.update();
     FBO.update();
 
@@ -60,8 +66,7 @@ function animate() {
     requestAnimationFrame(animate);
 }
 
-window.onresize = function () {
-
+function onResize() {
     const w = window.innerWidth;
     const h = window.innerHeight;
 
