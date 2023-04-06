@@ -37,7 +37,6 @@ function init() {
 
     // initialization block
     BG.init(scene);
-    LIGHTS.init(scene);
     CLOTH.init(scene);
 
     MOUSE.init(camera, renderer.domElement);
@@ -45,6 +44,9 @@ function init() {
 
     // dispose of calculation data
     PRE.dispose();
+
+    // initialize light
+    LIGHTS.init(scene);
 
     // start program
     animate();

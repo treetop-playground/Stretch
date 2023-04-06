@@ -1,5 +1,6 @@
 let
-    objects;
+    objects,
+    finished;
 
 const
     clock = new THREE.Clock();
@@ -37,6 +38,7 @@ function init(scene) {
     scene.add(ambientLight, spotLight, spotLight2, spotLight3, directionalLight, directionalLight2);
     objects = [ambientLight, spotLight, spotLight2, spotLight3, directionalLight, directionalLight2];
 
+    finished = false;
 }
 
 function easing(t, c) {
@@ -44,15 +46,26 @@ function easing(t, c) {
     return c / 2 * ((t -= 2) * t * t + 2);
 }
 
+function updateLights(time) {
+
+    for (let i = 0; i < objects.length; i++)
+        objects[i].intensity = objects[i].baseIntensity * easing((time - 1) / 3, 1.0);
+
+}
+
 function update() {
+
+    if (finished) return;
 
     const time = clock.getElapsedTime();
 
     if (time > 1 && time < 4) {
 
-        for (let i = 0; i < objects.length; i++) {
-            objects[i].intensity = objects[i].baseIntensity * easing((time - 1) / 3, 1.0);
-        }
+        updateLights(time);
+
+    } else if (time > 4) {
+        updateLights(4);
+        finished = true;
     }
 }
 
