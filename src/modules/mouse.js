@@ -1,21 +1,22 @@
 import * as PRE from './pre.js';
 
-let
-    camera,
-    interacting = false,
-    psel = undefined;
+let camera;
 
 const
-    mouse = new THREE.Vector2(),
+    pointers = {},
+    vertices = new Array(3),
+    coordinates = new Array(3),
     tmpmouse = new THREE.Vector3(),
     mouse3d = new THREE.Vector3(),
     raycaster = new THREE.Raycaster(),
     plane = new THREE.Plane(undefined, -1.8),
     sphere = new THREE.Sphere(undefined, 1);
 
+
 function init(PerspectiveCamera) {
 
     camera = PerspectiveCamera;
+    plane.normal.copy(camera.position).normalize();
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mousedown', onMouseDown);
@@ -23,63 +24,96 @@ function init(PerspectiveCamera) {
     window.addEventListener('mouseup', onMouseUp);
 
     window.addEventListener('touchmove', onTouchMove, { passive: false });
-    window.addEventListener('touchstart', onTouchDown);
+    window.addEventListener('touchstart', onTouchDown, { passive: false });
     window.addEventListener('touchend', onTouchUp);
+
 }
 
 function updating() {
 
-    if (!interacting) return false;
+    let count = 0;
+    let isUpdating = false;
 
-    raycaster.setFromCamera(mouse, camera);
+    for (let [key, value] of Object.entries(pointers)) {
 
-    if (raycaster.ray.intersectSphere(sphere, tmpmouse) != null) {
-        mouse3d.copy(tmpmouse);
+        let mouse = value.screenCoordinate;
 
-        if (psel == undefined) {
+        raycaster.setFromCamera(mouse, camera);
+
+        if (value.vertex === undefined &&
+            raycaster.ray.intersectSphere(sphere, tmpmouse) != null) {
+
+            mouse3d.copy(tmpmouse);
+
             let dist = Infinity;
-            for (let i = 0; i < PRE.vertices.length; i++) {
+
+            for (let i = 0; i < PRE.vertices.length; ++i) {
                 const tmp = mouse3d.distanceTo(PRE.vertices[i]);
 
                 if (tmp < dist) {
                     dist = tmp;
-                    psel = i;
+                    value.vertex = i;
                 }
             }
         }
+
+        if (value.vertex !== undefined) {
+
+            isUpdating = true;
+            raycaster.ray.intersectPlane(plane, tmpmouse);
+            value.worldCoordinate.copy(tmpmouse);
+
+            vertices[count] = value.vertex;
+            coordinates[count] = value.worldCoordinate;
+
+            count++;
+        }
     }
 
-    plane.normal.copy(camera.position).normalize();
+    while (count < 3) {
+        vertices[count] = -1;
+        coordinates[count] = mouse3d;
 
-    if (raycaster.ray.intersectPlane(plane, tmpmouse) != null) {
-        mouse3d.copy(tmpmouse);
+        count++;
     }
 
-    return (interacting && psel) ? true : false;
+    return (isUpdating) ? true : false;
 }
 
 function onMouseMove(evt) {
-    mouse.x = (evt.pageX / window.innerWidth) * 2 - 1;
-    mouse.y = -(evt.pageY / window.innerHeight) * 2 + 1;
-};
+
+    if (pointers['mouse'] !== undefined) {
+        pointers['mouse'].screenCoordinate.x = (evt.pageX / window.innerWidth) * 2 - 1;
+        pointers['mouse'].screenCoordinate.y = - (evt.pageY / window.innerHeight) * 2 + 1;
+    }
+}
 
 function onMouseDown(evt) {
+
     if (evt.button == 0) {
-        interacting = true;
+
+        pointers['mouse'] = {
+            vertex: undefined,
+            screenCoordinate: new THREE.Vector2(),
+            worldCoordinate: new THREE.Vector3()
+        }
+
+        onMouseMove(evt);
     }
-};
+}
 
 function onMouseUp(evt) {
+
     if (evt.button == 0) {
-        interacting = false;
-        psel = undefined;
+
+        delete pointers['mouse'];
+
     }
-};
+}
 
 function onMouseOut() {
 
-    interacting = false;
-    psel = undefined;
+    delete pointers['mouse'];
 
 }
 
@@ -87,25 +121,40 @@ function onTouchMove(evt) {
 
     evt.preventDefault();
 
-    mouse.x = (evt.touches[0].pageX / window.innerWidth) * 2 - 1;
-    mouse.y = -(evt.touches[0].pageY / window.innerHeight) * 2 + 1;
+    for (let i = 0; i < evt.changedTouches.length; ++i) {
+        let touch = evt.changedTouches[i];
 
+        pointers[touch.identifier].screenCoordinate.x = (touch.pageX / window.innerWidth) * 2 - 1;
+        pointers[touch.identifier].screenCoordinate.y = - (touch.pageY / window.innerHeight) * 2 + 1;
+    }
 }
 
 function onTouchDown(evt) {
 
-    interacting = true;
+    for (let i = 0; i < evt.changedTouches.length; ++i) {
+        let touch = evt.changedTouches[i];
 
-    mouse.x = (evt.touches[0].pageX / window.innerWidth) * 2 - 1;
-    mouse.y = -(evt.touches[0].pageY / window.innerHeight) * 2 + 1;
+        pointers[touch.identifier] = {
+
+            vertex: undefined,
+            screenCoordinate: new THREE.Vector2(),
+            worldCoordinate: new THREE.Vector3()
+
+        }
+
+    }
+
+    onTouchMove(evt);
+}
+
+function onTouchUp(evt) {
+
+    for (let i = 0; i < evt.changedTouches.length; ++i) {
+        let touch = evt.changedTouches[i];
+
+        delete pointers[touch.identifier];
+    }
 
 }
 
-function onTouchUp() {
-
-    interacting = false;
-    psel = undefined;
-
-}
-
-export { init, updating, mouse3d, psel };
+export { init, updating, vertices, coordinates }
